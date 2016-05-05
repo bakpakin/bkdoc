@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void add_markup(uint8_t * text, uint32_t length) {
+static void add_markup(struct bkd_parsestate * B, uint8_t * text, uint32_t length) {
 
 }
 

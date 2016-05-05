@@ -3,8 +3,7 @@
  * of files.
  */
 #include <stdio.h>
-#include "bkd_ast.h"
-#include "bkd_parse.c"
+#include "bkd_parse.h"
 
 int main (int argc, const char ** argv) {
     printf("Hello, bakdown!\n");

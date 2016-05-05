@@ -4,10 +4,9 @@ project(bakdown)
 
 set(SOURCES
 src/main.c
-src/bkd/parse.c
+src/bkd_parse.c
 )
 
 include_directories(src)
 
-add_executable(bakdown $SOURCES)
-
+add_executable(bakdown ${SOURCES})

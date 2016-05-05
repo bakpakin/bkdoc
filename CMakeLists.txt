@@ -4,6 +4,7 @@ project(bakdown)
 
 set(SOURCES
 src/main.c
+src/bkd/parse.c
 )
 
 include_directories(src)

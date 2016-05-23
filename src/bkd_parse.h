@@ -7,7 +7,7 @@
 
 struct bkd_parsestate {
     void * memory;
-    enum bkd_type lastType;
+    uint8_t lastType;
 };
 
 struct bkd_document * bkd_parsef(FILE * f);

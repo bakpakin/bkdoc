@@ -36,6 +36,9 @@
 *.dSYM/
 *.su
 
+# YouCompleteMe
+.ycm_extra_conf.pyc
+
 # Created by https://www.gitignore.io/api/cmake
 
 ### CMake ###
@@ -45,8 +48,4 @@ CMakeScripts
 Makefile
 cmake_install.cmake
 install_manifest.txt
-
-### Custom ###
-
-# Cmake build dir
-build
+CTestTestfile.cmake

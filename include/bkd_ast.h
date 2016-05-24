@@ -29,13 +29,14 @@
  * in this way, with the link title and the image alternate text as the
  * original text, and the link destination and image url as the custom data.
  */
-#define BKD_BOLD 0
-#define BKD_ITALICS 1
-#define BKD_CODEINLINE 2
-#define BKD_MATH 3
-#define BKD_IMAGE 4
-#define BKD_LINK 5
-#define BKD_COUNT_MARKUP 6
+#define BKD_NONE 0
+#define BKD_BOLD 1
+#define BKD_ITALICS 2
+#define BKD_CODEINLINE 3
+#define BKD_MATH 4
+#define BKD_IMAGE 5
+#define BKD_LINK 6
+#define BKD_COUNT_MARKUP 7
 
 /*
  * Style
@@ -46,19 +47,19 @@
 
 struct bkd_node;
 
-struct bkd_markup {
-    uint8_t type;
-    uint32_t start;
-    uint32_t count;
+/* the 'tree' union should be treated as a 'leaf' if nodeCount is 0, otherwise as a 'node'. */
+struct bkd_text {
+    uint8_t markupType;
+    uint32_t nodeCount;
+    union {
+        struct {
+            uint32_t textLength;
+            uint8_t * text;
+        } leaf;
+        struct bkd_text * node;
+    } tree;
     uint8_t * data; // Optional; only for image and link types.
     uint32_t dataSize;
-};
-
-struct bkd_text {
-    uint32_t textLength;
-    uint8_t * text;
-    uint32_t markupCount;
-    struct bkd_markup * markups;
 };
 
 struct bkd_paragraph {

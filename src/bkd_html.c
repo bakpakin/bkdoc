@@ -6,6 +6,7 @@ static const char * MARKUP_TAGS[] = {
     "strong",
     "em",
     "code",
+    "div",
     "img",
     "href"
 };
@@ -86,7 +87,7 @@ static size_t utf8_read(uint8_t * s, uint32_t * ret) {
 }
 
 /* Use numeric escapes for most things for easier generation */
-static size_t html_escape_utf8(uint32_t point, uint8_t *buffer, uint32_t buflen) {
+static size_t html_escape_utf8(uint32_t point, uint8_t buffer[12]) {
     static const uint8_t hexDigits[] = {
         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B' ,'C', 'D', 'E', 'F'
     };
@@ -96,22 +97,18 @@ static size_t html_escape_utf8(uint32_t point, uint8_t *buffer, uint32_t buflen)
         return 0;
     }
     uint32_t requiredLen = 4 + 2 * count;
-    if (requiredLen > buflen) {
-        return buflen;
-    }
     buffer[0] = '&';
     buffer[1] = '#';
     buffer[2] = 'x';
     for (uint32_t i = 0; i < count; i++) {
-        uint8_t octet = octets[i];
-        buffer[3 + 2 * i] = hexDigits[octet >> 4];
-        buffer[4 + 2 * i] = hexDigits[octet & 0xF];
+        buffer[3 + 2 * i] = hexDigits[octets[i] >> 4];
+        buffer[4 + 2 * i] = hexDigits[octets[i] & 0xF];
     }
     buffer[requiredLen - 1] = ';';
     return requiredLen;
 }
 
-static size_t html_write_utf8(uint32_t point, uint8_t *buffer, size_t buflen) {
+static size_t html_write_utf8(uint32_t point, uint8_t buffer[12]) {
 
     /*
      * Test if the codepoint is one of &, <, >, ', " or if the codepoint is not ascii or CJK character.
@@ -121,101 +118,38 @@ static size_t html_write_utf8(uint32_t point, uint8_t *buffer, size_t buflen) {
     if (point == 60 || point == 62 || point == 38 || point == 34 || point == 39 ||
             point < 32 ||
             (point > 127 && point < 0x10000)) {
-        return html_escape_utf8(point, buffer, buflen);
+        return html_escape_utf8(point, buffer);
     } else {
-        size_t size = utf8_sizep(point);
-        if (size > buflen) {
-            return size;
-        } else {
-            return utf8_write(buffer, point);
-        }
+        return utf8_write(buffer, point);
     }
 }
 
-/* Use quicksort to sort tags in accending order based on start index */
-static void tag_sort(struct bkd_markup * markups, uint32_t count) {
-    if (count < 2) return;
-    uint32_t l = 0, r = count - 1;
-    uint32_t pivot = markups[count / 2].start;
-    struct bkd_markup temp;
-    while (l < r) {
-        if (markups[r].start < markups[l].start) {
-            temp = markups[l];
-            markups[l] = markups[r];
-            markups[r] = temp;
-        }
-        do l++; while (markups[l].start < pivot);
-        do r--; while (markups[r].start >= pivot);
+static void put_markup(struct bkd_ostream * out, struct bkd_text * t) {
+    uint8_t buffer[12];
+    uint32_t codepoint;
+    if (t->markupType != BKD_NONE) {
+        bkd_putc(out, '<');
+        bkd_puts(out, MARKUP_TAGS[t->markupType - 1]);
+        bkd_putc(out, '>');
     }
-    tag_sort(markups, l - 1);
-    tag_sort(markups + l, count - l);
-}
-
-static uint8_t * markup(struct bkd_text * t, uint32_t * size) {
-    uint32_t buflen = t->textLength * 1.1;
-    uint8_t * buffer = BKD_MALLOC(buflen);
-
-    /* Sort markup tags in a structure for sequential access and modfication */
-    struct bkd_markup tags[2 * t->markupCount];
-    for (uint32_t i = 0; i < t->markupCount; i++) {
-        struct bkd_markup * m = t->markups + i;
-        tags[2 * i] = (struct bkd_markup) {
-            m->type,
-            m->start,
-            m->count,
-            m->data,
-            m->dataSize
-        };
-        tags[2 * i + 1] = (struct bkd_markup) {
-            m->type,
-            m->start + m->count,
-            0,
-            m->data,
-            m->dataSize
-        };
-    }
-    tag_sort(tags, 2 * t->markupCount);
-
-    /* Put marked up text in buffer */
-    uint32_t next;
-    uint32_t nextTag = 0;
-    size_t bytesWritten, bytesRead;
-    uint32_t readPos = 0;
-    uint32_t writePos = 0;
-    while ((readPos < t->textLength) && (bytesRead = utf8_read(t->text + readPos, &next))) {
-        readPos += bytesRead;
-        if (buflen < writePos + 4)
-            buffer = BKD_REALLOC(buffer, (buflen = (writePos + 4) * 1.1));
-        if(nextTag < 2 * t->markupCount && readPos > tags[nextTag].start) {
-            if (tags[nextTag].count == 0) { /* Closing tag */
-                buffer[writePos++] = '<';
-                buffer[writePos++] = '/';
-            } else { /* Opening tag */
-                buffer[writePos++] = '<';
-            }
-            const char * tag = MARKUP_TAGS[tags[nextTag].type];
-            size_t taglen = strlen(tag);
-            if (buflen < writePos + taglen + 1)
-                buffer = BKD_REALLOC(buffer, (buflen = (writePos + taglen + 1) * 1.1));
-            memcpy((char *) buffer + writePos, tag, taglen);
-            writePos += taglen;
-            buffer[writePos++] = '>';
-            nextTag++;
+    if (t->nodeCount == 0) { /* Leaf */
+        uint8_t * c = t->tree.leaf.text;
+        uint8_t * end = c + t->tree.leaf.textLength;
+        while (c < end) {
+            c += utf8_read(c, &codepoint);
+            size_t len = html_write_utf8(codepoint, buffer);
+            bkd_putn(out, buffer, len);
         }
-        while ((bytesWritten = html_write_utf8(next, buffer + writePos, buflen - writePos)) > buflen - writePos){
-            buffer = BKD_REALLOC(buffer, (buflen = (writePos + bytesWritten) * 1.1));
-        }
-        writePos += bytesWritten;
+    } else { /* Node */
+        for (uint32_t i = 0; i < t->nodeCount; i++)
+            put_markup(out, t->tree.node + i);
     }
-    *size = writePos;
-    return buffer;
-}
-
-static inline void put_markup(struct bkd_ostream * out, struct bkd_text * t) {
-    uint32_t size;
-    uint8_t * chars = markup(t, &size);
-    bkd_putn(out, chars, size);
-    BKD_FREE(chars);
+    if (t->markupType != BKD_NONE) {
+        bkd_putc(out, '<');
+        bkd_putc(out, '/');
+        bkd_puts(out, MARKUP_TAGS[t->markupType - 1]);
+        bkd_putc(out, '>');
+    }
 }
 
 static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, struct bkd_node * parent) {

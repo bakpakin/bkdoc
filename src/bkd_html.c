@@ -124,7 +124,7 @@ static size_t html_write_utf8(uint32_t point, uint8_t buffer[12]) {
     }
 }
 
-static void put_markup(struct bkd_ostream * out, struct bkd_text * t) {
+static void print_line(struct bkd_ostream * out, struct bkd_linenode * t) {
     uint8_t buffer[12];
     uint32_t codepoint;
     if (t->markupType != BKD_NONE) {
@@ -142,7 +142,7 @@ static void put_markup(struct bkd_ostream * out, struct bkd_text * t) {
         }
     } else { /* Node */
         for (uint32_t i = 0; i < t->nodeCount; i++)
-            put_markup(out, t->tree.node + i);
+            print_line(out, t->tree.node + i);
     }
     if (t->markupType != BKD_NONE) {
         bkd_putc(out, '<');
@@ -158,7 +158,7 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
     switch (node->type) {
         case BKD_PARAGRAPH:
             bkd_puts(out, "<p>");
-            put_markup(out, &node->data.paragraph.text);
+            print_line(out, &node->data.paragraph.text);
             bkd_puts(out, "</p>");
             break;
         case BKD_OLIST:
@@ -186,7 +186,7 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
             bkd_putc(out, '<');
             bkd_putn(out, headerdata, 2);
             bkd_putc(out, '>');
-            put_markup(out, &node->data.header.text);
+            print_line(out, &node->data.header.text);
             bkd_putc(out, '<');
             bkd_putc(out, '/');
             bkd_putn(out, headerdata, 2);
@@ -212,16 +212,16 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
             break;
         case BKD_COMMENTBLOCK:
             bkd_puts(out, "<blockquote>");
-            put_markup(out, &node->data.commentblock.text);
+            print_line(out, &node->data.commentblock.text);
             bkd_puts(out, "</blockquote>");
             break;
         case BKD_TEXT:
             if (parent && (parent->type == BKD_OLIST || parent->type == BKD_ULIST)) {
                 bkd_puts(out, "<li>");
-                put_markup(out, &node->data.text);
+                print_line(out, &node->data.text);
                 bkd_puts(out, "</li>");
             } else {
-                put_markup(out, &node->data.text);
+                print_line(out, &node->data.text);
             }
             break;
         default:

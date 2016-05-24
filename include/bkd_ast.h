@@ -24,7 +24,7 @@
 
 /*
  * Denotes the type of a "markup". A "markup" is a transformation
- * on text within a bkd_text. Bold, italics, and inline code blocks
+ * on text within a bkd_linenode. Bold, italics, and inline code blocks
  * are all example of "markups". Images and links are also represented
  * in this way, with the link title and the image alternate text as the
  * original text, and the link destination and image url as the custom data.
@@ -48,7 +48,7 @@
 struct bkd_node;
 
 /* the 'tree' union should be treated as a 'leaf' if nodeCount is 0, otherwise as a 'node'. */
-struct bkd_text {
+struct bkd_linenode {
     uint8_t markupType;
     uint32_t nodeCount;
     union {
@@ -56,14 +56,14 @@ struct bkd_text {
             uint32_t textLength;
             uint8_t * text;
         } leaf;
-        struct bkd_text * node;
+        struct bkd_linenode * node;
     } tree;
     uint8_t * data; // Optional; only for image and link types.
     uint32_t dataSize;
 };
 
 struct bkd_paragraph {
-    struct bkd_text text;
+    struct bkd_linenode text;
 };
 
 struct bkd_olist {
@@ -84,7 +84,7 @@ struct bkd_table {
 
 struct bkd_header {
     uint32_t size;
-    struct bkd_text text;
+    struct bkd_linenode text;
 };
 
 struct bkd_linebreak {
@@ -99,7 +99,7 @@ struct bkd_codeblock {
 };
 
 struct bkd_commentblock {
-    struct bkd_text text;
+    struct bkd_linenode text;
 };
 
 struct bkd_document {
@@ -110,7 +110,7 @@ struct bkd_document {
 struct bkd_node {
     uint8_t type;
     union {
-        struct bkd_text text;
+        struct bkd_linenode text;
         struct bkd_paragraph paragraph;
         struct bkd_olist olist;
         struct bkd_ulist ulist;

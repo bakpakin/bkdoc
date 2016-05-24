@@ -13,7 +13,7 @@ int main (int argc, const char ** argv) {
     /* Assemble test document */
     struct bkd_document doc;
     struct bkd_node nodes[1];
-    struct bkd_text texts[3];
+    struct bkd_linenode texts[3];
     doc.itemCount = 1;
     doc.items = nodes;
     doc.items[0].type = BKD_PARAGRAPH;

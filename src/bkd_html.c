@@ -10,27 +10,22 @@ static const char * MARKUP_TAGS[] = {
     "href"
 };
 
-/* Use quicksort to sort tags in accending order based on start index */
-static void tag_sort(struct bkd_markup * markups, uint32_t count) {
-    if (count < 2) return;
-    uint32_t l = 0, r = count - 1;
-    uint32_t pivot = markups[count / 2].start;
-    struct bkd_markup temp;
-    while (l < r) {
-        if (markups[r].start < markups[l].start) {
-            temp = markups[l];
-            markups[l] = markups[r];
-            markups[r] = temp;
-        }
-        do l++; while (markups[l].start <= pivot);
-        do r--; while (markups[r].start >= pivot);
+static size_t utf8_sizep(uint32_t codepoint) {
+    if (codepoint < 0x80) {
+        return 1;
+    } else if (codepoint < 0x800) {
+        return 2;
+    } else if (codepoint < 0x10000) {
+        return 3;
+    } else if (codepoint < 0x200000) {
+        return 4;
+    } else {
+        return 0;
     }
-    tag_sort(markups, l - 1);
-    tag_sort(markups + l, count - l);
 }
 
-static inline unsigned utf8_charsize(uint8_t head) {
-    if (head & 0x80) {
+static size_t utf8_sizeb(uint8_t head) {
+    if ((head & 0x80) == 0) {
         return 1;
     } else if ((head & 0xE0) == 0xC0) {
         return 2;
@@ -43,65 +38,117 @@ static inline unsigned utf8_charsize(uint8_t head) {
     }
 }
 
-#define utf8_charsizes(s) utf8_charsize(*(s))
-#define utf8_charsizep(c) utf8_charsize((c) & 0xFF)
-
-static int utf8_write(uint8_t ** s, uint64_t value) {
+static size_t utf8_write(uint8_t * s, uint32_t value) {
     uint8_t octets[4];
-    unsigned count = utf8_charsizep(value);
-    if (count == 0) {
-        return 1;
+    size_t count;
+    if (value < 0x80) {
+        count = 1;
+        octets[0] = value;
+    } else if (value < 0x800) {
+        count = 2;
+        octets[0] = (value >> 6) | 0xC0;
+        octets[1] = (value & 0x3F) | 0x80;
+    } else if (value < 0x10000) {
+        count = 3;
+        octets[0] = ((value >> 12) & 0x0F) | 0xE0;
+        octets[1] = ((value >> 6) & 0x3F) | 0x80;
+        octets[2] = (value & 0x3F) | 0x80;
+    } else if (value < 0x200000) {
+        count = 4;
+        octets[0] = ((value >> 18) & 0x07) | 0xF0;
+        octets[1] = ((value >> 12) & 0x3F) | 0x80;
+        octets[2] = ((value >> 6) & 0x3F) | 0x80;
+        octets[3] = (value & 0x3F) | 0x80;
+    } else {
+        return 0;
     }
-    octets[0] = value & 0xFF;
-    if (count > 1) {
-        octets[1] = (value & 0xFFFF) >> 0x8;
-        if (count > 2) {
-            octets[2] = (value & 0xFFFFFF) >> 0x10;
-            if (count > 3)
-            octets[3] = (value & 0xFFFFFFFF) >> 0x18;
-        }
-    }
-    memcpy(*s, octets, count);
-    *s += count;
-    return 0;
+    memcpy(s, octets, count);
+    return count;
 }
 
-static int utf8_read(uint8_t ** s, uint64_t * ret) {
-    uint8_t * c = *s;
-    uint8_t head = *c;
-    uint64_t value;
-    if (head & 0x80) {
-        value = head;
-        c += 1;
-    } else if ((head & 0xE0) == 0xC0) {
-        value = head + c[1] * 0x100;
-        c += 2;
-    } else if ((*c & 0xF0) == 0xE0) {
-        value = head + c[1] * 0x100 + c[2] * 0x10000;
-        c += 3;
-    } else if ((*c & 0xF8) == 0xF0) {
-        value = head + c[1] * 0x100 + c[2] * 0x10000 + c[3] * 0x1000000;
-        c += 4;
-    } else {
+static size_t utf8_read(uint8_t * s, uint32_t * ret) {
+    uint8_t head = *s;
+    if ((head & 0x80) == 0) {
+        *ret = head;
         return 1;
+    } else if ((head & 0xE0) == 0xC0) {
+        *ret = (s[1] & 0x3F) + (head & 0x1F) * 0x40;
+        return 2;
+    } else if ((head & 0xF0) == 0xE0) {
+        *ret = (s[2] & 0x3F) + (s[1] & 0x3F) * 0x20 + (head & 0x0F) * 0x800;
+        return 3;
+    } else if ((head & 0xF8) == 0xF0) {
+        *ret = (s[3] & 0x3F) + (s[2] & 0x3F) * 0x10 + (s[1] & 0x3F) * 0x400 + (head & 0x07) * 0x10000;
+        return 4;
+    } else {
+        return 0;
     }
-    *s = c;
-    *ret = value;
-    return 0;
 }
 
 /* Use numeric escapes for most things for easier generation */
-static int html_escape_utf8(uint64_t point, uint8_t *buffer, uint32_t buflen) {
-    static const char hexDigits[] = {
+static size_t html_escape_utf8(uint32_t point, uint8_t *buffer, uint32_t buflen) {
+    static const uint8_t hexDigits[] = {
         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B' ,'C', 'D', 'E', 'F'
     };
-    uint32_t requiredLen = 4 + 2 * utf8_charsizep(point);
-    if (requiredLen == 4) { /* Invalid UTF-8 */
-        return 1;
+    uint8_t octets[4];
+    size_t count = utf8_write(octets, point);
+    if (count == 0) { /* Invalid UTF-8 */
+        return 0;
     }
+    uint32_t requiredLen = 4 + 2 * count;
+    if (requiredLen > buflen) {
+        return buflen;
+    }
+    buffer[0] = '&';
+    buffer[1] = '#';
+    buffer[2] = 'x';
+    for (uint32_t i = 0; i < count; i++) {
+        uint8_t octet = octets[i];
+        buffer[3 + 2 * i] = hexDigits[octet >> 4];
+        buffer[4 + 2 * i] = hexDigits[octet & 0xF];
+    }
+    buffer[requiredLen - 1] = ';';
+    return requiredLen;
+}
 
+static size_t html_write_utf8(uint32_t point, uint8_t *buffer, size_t buflen) {
 
-    return 0;
+    /*
+     * Test if the codepoint is one of &, <, >, ', " or if the codepoint is not ascii or CJK character.
+     * If UTF-8 character has 3 or more bytes, use normal encoding without escaping to not use too many
+     * bytes in the final HTML. Also escape ASCII unprintable characters.
+     */
+    if (point == 60 || point == 62 || point == 38 || point == 34 || point == 39 ||
+            point < 32 ||
+            (point > 127 && point < 0x10000)) {
+        return html_escape_utf8(point, buffer, buflen);
+    } else {
+        size_t size = utf8_sizep(point);
+        if (size > buflen) {
+            return size;
+        } else {
+            return utf8_write(buffer, point);
+        }
+    }
+}
+
+/* Use quicksort to sort tags in accending order based on start index */
+static void tag_sort(struct bkd_markup * markups, uint32_t count) {
+    if (count < 2) return;
+    uint32_t l = 0, r = count - 1;
+    uint32_t pivot = markups[count / 2].start;
+    struct bkd_markup temp;
+    while (l < r) {
+        if (markups[r].start < markups[l].start) {
+            temp = markups[l];
+            markups[l] = markups[r];
+            markups[r] = temp;
+        }
+        do l++; while (markups[l].start < pivot);
+        do r--; while (markups[r].start >= pivot);
+    }
+    tag_sort(markups, l - 1);
+    tag_sort(markups + l, count - l);
 }
 
 static uint8_t * markup(struct bkd_text * t, uint32_t * size) {
@@ -130,22 +177,54 @@ static uint8_t * markup(struct bkd_text * t, uint32_t * size) {
     tag_sort(tags, 2 * t->markupCount);
 
     /* Put marked up text in buffer */
-
-    memcpy(buffer, t->text, t->textLength);
-    *size = t->textLength;
+    uint32_t next;
+    uint32_t nextTag = 0;
+    size_t bytesWritten, bytesRead;
+    uint32_t readPos = 0;
+    uint32_t writePos = 0;
+    while ((readPos < t->textLength) && (bytesRead = utf8_read(t->text + readPos, &next))) {
+        readPos += bytesRead;
+        if (buflen < writePos + 4)
+            buffer = BKD_REALLOC(buffer, (buflen = (writePos + 4) * 1.1));
+        if(nextTag < 2 * t->markupCount && readPos > tags[nextTag].start) {
+            if (tags[nextTag].count == 0) { /* Closing tag */
+                buffer[writePos++] = '<';
+                buffer[writePos++] = '/';
+            } else { /* Opening tag */
+                buffer[writePos++] = '<';
+            }
+            const char * tag = MARKUP_TAGS[tags[nextTag].type];
+            size_t taglen = strlen(tag);
+            if (buflen < writePos + taglen + 1)
+                buffer = BKD_REALLOC(buffer, (buflen = (writePos + taglen + 1) * 1.1));
+            memcpy((char *) buffer + writePos, tag, taglen);
+            writePos += taglen;
+            buffer[writePos++] = '>';
+            nextTag++;
+        }
+        while ((bytesWritten = html_write_utf8(next, buffer + writePos, buflen - writePos)) > buflen - writePos){
+            buffer = BKD_REALLOC(buffer, (buflen = (writePos + bytesWritten) * 1.1));
+        }
+        writePos += bytesWritten;
+    }
+    *size = writePos;
     return buffer;
 }
 
-static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, struct bkd_node * parent) {
+static inline void put_markup(struct bkd_ostream * out, struct bkd_text * t) {
     uint32_t size;
+    uint8_t * chars = markup(t, &size);
+    bkd_putn(out, chars, size);
+    BKD_FREE(chars);
+}
+
+static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, struct bkd_node * parent) {
     uint32_t headerSize;
     uint8_t * text;
     switch (node->type) {
         case BKD_PARAGRAPH:
             bkd_puts(out, "<p>");
-            text = markup(&node->data.paragraph.text, &size);
-            bkd_putn(out, text, size);
-            BKD_FREE(text);
+            put_markup(out, &node->data.paragraph.text);
             bkd_puts(out, "</p>");
             break;
         case BKD_OLIST:
@@ -173,9 +252,7 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
             bkd_putc(out, '<');
             bkd_putn(out, headerdata, 2);
             bkd_putc(out, '>');
-            text = markup(&node->data.header.text, &size);
-            bkd_putn(out, text, size);
-            BKD_FREE(text);
+            put_markup(out, &node->data.header.text);
             bkd_putc(out, '<');
             bkd_putc(out, '/');
             bkd_putn(out, headerdata, 2);
@@ -201,22 +278,16 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
             break;
         case BKD_COMMENTBLOCK:
             bkd_puts(out, "<blockquote>");
-            text = markup(&node->data.commentblock.text, &size);
-            bkd_putn(out, text, size);
-            BKD_FREE(text);
+            put_markup(out, &node->data.commentblock.text);
             bkd_puts(out, "</blockquote>");
             break;
         case BKD_TEXT:
             if (parent && (parent->type == BKD_OLIST || parent->type == BKD_ULIST)) {
                 bkd_puts(out, "<li>");
-                text = markup(&node->data.text, &size);
-                bkd_putn(out, text, size);
-                BKD_FREE(text);
+                put_markup(out, &node->data.text);
                 bkd_puts(out, "</li>");
             } else {
-                text = markup(&node->data.text, &size);
-                bkd_putn(out, text, size);
-                BKD_FREE(text);
+                put_markup(out, &node->data.text);
             }
             break;
         default:

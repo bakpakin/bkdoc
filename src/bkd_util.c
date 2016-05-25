@@ -4,19 +4,6 @@
 
 /* Output streams */
 
-struct bkd_ostream * bkd_ostream_init(struct bkd_ostreamdef * type, struct bkd_ostream * stream, void * user) {
-    stream->type = type;
-    stream->user = user;
-    if (type->init)
-        type->init(stream);
-    return stream;
-}
-
-void bkd_ostream_deinit(struct bkd_ostream * stream) {
-    if (stream->type->deinit)
-        stream->type->deinit(stream);
-}
-
 int bkd_putn(struct bkd_ostream * out, const uint8_t * data, uint32_t size) {
     return out->type->stream(out, data, size);
 }
@@ -44,15 +31,12 @@ struct bkd_istream * bkd_istream_init(struct bkd_istreamdef * type, struct bkd_i
     stream->linelen = 0;
     stream->readlen = 0;
     stream->buffer = BKD_MALLOC(stream->buflen);
-    if (type->init)
-        type->init(stream);
     return stream;
 }
 
-void bkd_istream_deinit(struct bkd_istream * stream) {
-    if (stream->type->deinit)
-        stream->type->deinit(stream);
-    BKD_FREE(stream->buffer);
+void bkd_istream_freebuf(struct bkd_istream * in) {
+    BKD_FREE(in->buffer);
+    in->buffer = NULL;
 }
 
 uint8_t * bkd_getl(struct bkd_istream * in, size_t * len) {
@@ -94,17 +78,13 @@ static int stdout_put(struct bkd_ostream * out, const uint8_t * data, uint32_t s
 }
 
 static struct bkd_ostreamdef _bkd_file_ostreamdef = {
-    NULL,
     file_put,
-    file_flush,
-    NULL,
+    file_flush
 };
 
 static struct bkd_ostreamdef _bkd_stdout_def = {
-    NULL,
     stdout_put,
-    file_flush,
-    NULL,
+    file_flush
 };
 
 static struct bkd_ostream _bkd_stdout = {
@@ -117,11 +97,16 @@ struct bkd_ostream * BKD_STDOUT = &_bkd_stdout;
 
 /* stdio input stream */
 
-static int find_newline(uint8_t * s, size_t nmax) {
+static int find_newline(uint8_t * s, size_t nmax, int * skip) {
     int imax = (int) nmax;
     for (int i = 0; i < imax; i++) {
-        if (s[i] == '\n')
+        if (s[i] == '\n') {
+            *skip = 0;
             return i;
+        } else if (s[i] == '\r' && i < nmax - 1 && s[i + 1] == '\n') {
+            *skip = 1;
+            return i;
+        }
     }
     return -1;
 }
@@ -130,9 +115,11 @@ static int find_newline(uint8_t * s, size_t nmax) {
  * own memory managment. Also, I think the current implementation
  * could be shorter. */
 static int file_getl(struct bkd_istream * in) {
-    int newline = find_newline(in->buffer, in->readlen);
+    int skip = 0;
+    int newline = find_newline(in->buffer, in->readlen, &skip);
     if (newline >= 0) { // We have read all characters on the line.
         in->linelen = newline;
+        in->readlen -= skip;
         return 1;
     } else { // We don't have a complete line in the buffer
         FILE * f = (FILE *) in->user;
@@ -148,10 +135,11 @@ static int file_getl(struct bkd_istream * in) {
                 in->linelen = in->readlen;
                 return (in->linelen > 0) || (read > 0);
             } else {
-                newline = find_newline(in->buffer + in->readlen, in->buflen - in->readlen);
+                newline = find_newline(in->buffer + in->readlen, in->buflen - in->readlen, &skip);
             }
         }
         in->linelen = newline;
+        in->readlen -= skip;
         return 1;
     }
 }
@@ -164,15 +152,11 @@ static int stdin_getl(struct bkd_istream * in) {
 }
 
 static struct bkd_istreamdef _bkd_file_istreamdef = {
-    NULL,
-    file_getl,
-    NULL
+    file_getl
 };
 
 static struct bkd_istreamdef _bkd_stdin_istreamdef = {
-    NULL,
-    stdin_getl,
-    NULL
+    stdin_getl
 };
 
 static struct bkd_istream _bkd_stdin = {

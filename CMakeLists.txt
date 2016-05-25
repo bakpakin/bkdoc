@@ -13,6 +13,7 @@ src/bkd_errors.c
 src/bkd_parse.c
 src/bkd_html.c
 src/bkd_util.c
+src/bkd_utf8.c
 )
 
 include_directories("src")

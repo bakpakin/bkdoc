@@ -1,9 +1,9 @@
-# Bakdown
+# BKDoc
 # Copyright Calvin Rose
 
 cmake_minimum_required(VERSION 2.8)
 
-project(bakdown)
+project(bkd)
 
 set(CMAKE_C_STANDARD 99)
 
@@ -19,4 +19,4 @@ src/bkd_utf8.c
 include_directories("src")
 include_directories("include")
 
-add_executable(bakdown ${SOURCES})
+add_executable(bkd ${SOURCES})

@@ -43,7 +43,7 @@ struct bkd_istream * bkd_istream_init(struct bkd_istreamdef * type, struct bkd_i
     stream->buflen = 80;
     stream->linelen = 0;
     stream->readlen = 0;
-    stream->buffer = BKD_MALLOC(80);
+    stream->buffer = BKD_MALLOC(stream->buflen);
     if (type->init)
         type->init(stream);
     return stream;

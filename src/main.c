@@ -32,15 +32,8 @@ int main (int argc, const char ** argv) {
     texts[0].tree.leaf.text = (uint8_t *) hello;
     texts[0].tree.leaf.textLength = strlen(hello);
 
-    /* bkd_html(BKD_STDOUT, &doc); */
-    /* bkd_putc(BKD_STDOUT, '\n'); */
-    /* char buffer[256]; */
-    /* int i = 1; */
-
-    /* while (fgets(buffer, sizeof(buffer), stdin)) { */
-    /*     printf("%d %s", i, buffer); */
-    /*     i++; */
-    /* } */
+    bkd_html(BKD_STDOUT, &doc);
+    bkd_putc(BKD_STDOUT, '\n');
 
     size_t n;
     uint8_t * line = bkd_getl(BKD_STDIN, &n);

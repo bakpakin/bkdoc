@@ -38,4 +38,9 @@ extern const char * bkd_errors[];
 #define BKD_ERROR_INVALID_MARKUP_PATTERN 3
 #define BKD_ERROR_UNKNOWN_NODE 4
 
+/* Main Functions */
+struct bkd_document * bkd_parse(struct bkd_istream * in);
+
+struct bkd_linenode * bkd_parse_line(uint8_t * utf8, uint32_t len);
+
 #endif /* end of include guard: BKD_HEADER_ */

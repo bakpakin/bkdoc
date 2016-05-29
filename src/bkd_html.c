@@ -8,7 +8,9 @@ static const char * MARKUP_TAGS[] = {
     "code",
     "div",
     "img",
-    "a"
+    "a",
+    "del",
+    "u"
 };
 
 /* Use numeric escapes for most things for easier generation */

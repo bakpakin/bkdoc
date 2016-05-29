@@ -36,7 +36,9 @@
 #define BKD_MATH 4
 #define BKD_IMAGE 5
 #define BKD_LINK 6
-#define BKD_COUNT_MARKUP 7
+#define BKD_STRIKETHROUGH 7
+#define BKD_UNDERLINE 8
+#define BKD_COUNT_MARKUP 9
 
 /*
  * Style

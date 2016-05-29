@@ -25,22 +25,26 @@ enum markupchar {
 #define MUCBIT_OPENER 0x0F
 
 static const enum markupchar tokendata[] = {
-    0,
-    MUCBIT_DELIMITER | MUCBIT_SYMETRIC | MUCBIT_RECURSIVE | MUCBIT_OPENER | MUCBIT_CLOSER,
-    MUCBIT_DELIMITER | MUCBIT_SYMETRIC | MUCBIT_RECURSIVE | MUCBIT_OPENER | MUCBIT_CLOSER,
-    MUCBIT_DELIMITER | MUCBIT_SYMETRIC | MUCBIT_RECURSIVE | MUCBIT_OPENER | MUCBIT_CLOSER,
-    MUCBIT_DELIMITER | MUCBIT_SYMETRIC | MUCBIT_RECURSIVE | MUCBIT_OPENER | MUCBIT_CLOSER,
-    MUCBIT_DELIMITER | MUCBIT_SYMETRIC | MUCBIT_OPENER | MUCBIT_CLOSER,
-    MUCBIT_DELIMITER | MUCBIT_SYMETRIC | MUCBIT_OPENER | MUCBIT_CLOSER,
-    MUCBIT_DELIMITER | MUCBIT_OPENER,
-    MUCBIT_DELIMITER | MUCBIT_OPENER,
-    MUCBIT_DELIMITER | MUCBIT_CLOSER,
-    MUCBIT_DELIMITER | MUCBIT_OPENER,
-    MUCBIT_DELIMITER | MUCBIT_CLOSER
+    /* None         */ 0,
+    /* Star         */ MUCBIT_DELIMITER | MUCBIT_SYMETRIC | MUCBIT_RECURSIVE | MUCBIT_OPENER | MUCBIT_CLOSER,
+    /* Underscore   */ MUCBIT_DELIMITER | MUCBIT_SYMETRIC | MUCBIT_RECURSIVE | MUCBIT_OPENER | MUCBIT_CLOSER,
+    /* Tilda        */ MUCBIT_DELIMITER | MUCBIT_SYMETRIC | MUCBIT_RECURSIVE | MUCBIT_OPENER | MUCBIT_CLOSER,
+    /* Plus         */ MUCBIT_DELIMITER | MUCBIT_SYMETRIC | MUCBIT_RECURSIVE | MUCBIT_OPENER | MUCBIT_CLOSER,
+    /* Dollar       */ MUCBIT_DELIMITER | MUCBIT_SYMETRIC | MUCBIT_OPENER | MUCBIT_CLOSER,
+    /* Backtick     */ MUCBIT_DELIMITER | MUCBIT_SYMETRIC | MUCBIT_OPENER | MUCBIT_CLOSER,
+    /* Bangbracket  */ MUCBIT_DELIMITER | MUCBIT_OPENER,
+    /* Openbracket  */ MUCBIT_DELIMITER | MUCBIT_OPENER,
+    /* Closebracket */ MUCBIT_DELIMITER | MUCBIT_CLOSER,
+    /* Openparen    */ MUCBIT_DELIMITER | MUCBIT_OPENER,
+    /* Closeparen   */ MUCBIT_DELIMITER | MUCBIT_CLOSER
 };
 
 /* Tokenize the input from a line into only the tokens we need. */
 static enum markupchar charCheckMarkup(uint8_t * c, uint32_t maxlen, uint32_t * tokenLength) {
+    if (maxlen == 0) {
+        *tokenLength = 0;
+        return MUC_NONE;
+    }
     uint32_t length = 1;
     enum markupchar ret = MUC_NONE;
     switch (*c) {
@@ -64,7 +68,7 @@ static enum markupchar charCheckMarkup(uint8_t * c, uint32_t maxlen, uint32_t * 
                 length = 2;
                 ret = MUC_BANGBRACKET;
             } else {
-                ret =MUC_NONE;
+                ret = MUC_NONE;
             }
             break;
         case '(':
@@ -83,7 +87,7 @@ static enum markupchar charCheckMarkup(uint8_t * c, uint32_t maxlen, uint32_t * 
             ret = MUC_BACKTICK;
             break;
         case '\\':
-            if (maxlen < 2) {
+            if (maxlen == 1) {
                 length = 1;
             } else {
                 length =  bkd_utf8_sizeb(c[1]) + 1;
@@ -96,8 +100,8 @@ static enum markupchar charCheckMarkup(uint8_t * c, uint32_t maxlen, uint32_t * 
             break;
         default:
             length = bkd_utf8_sizeb(*c);
-            if (length == 1)
-                length = 2;
+            if (length == 0)
+                length = 1;
             if (length > maxlen)
                 length = maxlen;
             break;
@@ -167,7 +171,7 @@ static enum markupchar find_next(uint8_t * utf8, uint32_t len, uint32_t * nextPo
 static int32_t find_balanced(uint8_t * utf8, uint32_t len, uint32_t * firstTokenLength, uint32_t * finalTokenLength) {
 
     uint32_t pos = 0;
-    uint32_t tokenLength;
+    uint32_t tokenLength = 0;
     enum markupchar open = charCheckMarkup(utf8, len, &pos);
     uint32_t firstLength = pos;
     if (!(tokendata[open] & MUCBIT_OPENER)) return -1;
@@ -272,7 +276,6 @@ struct bkd_linenode * bkd_parse_line(struct bkd_linenode * l,
     while (1) {
 
         m = find_next(utf8 + pos, len - pos, &next, &openerLength);
-        pos += next;
 
         /* We're done if no next special */
         if (m == MUC_NONE) {
@@ -283,7 +286,10 @@ struct bkd_linenode * bkd_parse_line(struct bkd_linenode * l,
             break;
         }
 
-        int32_t closerPosAfter = find_balanced(utf8 + pos, len - pos, &openerLength, &closerLength);
+        pos += next;
+        int32_t closerPosAfter = -1;
+        if (m != MUC_OPENPAREN)
+            closerPosAfter = find_balanced(utf8 + pos, len - pos, &openerLength, &closerLength);
         if (closerPosAfter > 0) {
             if (last < pos) {
                 child = add_node(&nodes, &nodeCapacity, &nodeCount);
@@ -292,13 +298,10 @@ struct bkd_linenode * bkd_parse_line(struct bkd_linenode * l,
             }
             child = add_node(&nodes, &nodeCapacity, &nodeCount);
             uint8_t * current = utf8 + pos + openerLength;
-            uint32_t currentLength = len - pos - openerLength - closerLength;
+            uint32_t currentLength = closerPosAfter - openerLength - closerLength;
             if (tokendata[m] & MUCBIT_RECURSIVE) {
                 bkd_parse_line(child, current, currentLength);
             } else {
-                child->data = NULL;
-                child->dataSize = 0;
-                child->nodeCount = 0;
                 child->tree.leaf.text = escape(current, currentLength, &child->tree.leaf.textLength);
             }
             /* Set the child's markup type */
@@ -333,11 +336,23 @@ struct bkd_linenode * bkd_parse_line(struct bkd_linenode * l,
                     break;
             }
             pos += closerPosAfter;
+
+            /* Test for image and link suffix */
+            if ((child->markupType == BKD_IMAGE || child->markupType == BKD_LINK) &&
+                utf8[pos] == '(' &&
+                (closerPosAfter = find_balanced(utf8 + pos, len - pos, NULL, NULL)) != -1) {
+
+                child->data = BKD_MALLOC(closerPosAfter - 2);
+                child->dataSize = closerPosAfter - 2;
+                memcpy(child->data, utf8 + pos + 1, closerPosAfter - 2);
+                pos += closerPosAfter;
+            }
             last = pos;
         } else {
             pos += openerLength;
         }
     }
+
     nodes = BKD_REALLOC(nodes, sizeof(struct bkd_linenode) * nodeCount);
     if (nodeCount < 2 && nodes[0].markupType == BKD_NONE) {
         *l = *nodes;

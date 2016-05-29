@@ -41,6 +41,6 @@ extern const char * bkd_errors[];
 /* Main Functions */
 struct bkd_document * bkd_parse(struct bkd_istream * in);
 
-struct bkd_linenode * bkd_parse_line(uint8_t * utf8, uint32_t len);
+struct bkd_linenode * bkd_parse_line(struct bkd_linenode * node, uint8_t * utf8, uint32_t len);
 
 #endif /* end of include guard: BKD_HEADER_ */

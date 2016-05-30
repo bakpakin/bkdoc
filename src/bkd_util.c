@@ -2,6 +2,14 @@
 #include "bkd_utf8.h"
 #include <string.h>
 
+/* Error strings */
+const char * bkd_errors[] = {
+    NULL,
+    "Out of memory.",
+    "Invalid markup type.",
+    "Unknown node type."
+};
+
 /* Output streams */
 
 int bkd_putn(struct bkd_ostream * out, const uint8_t * data, uint32_t size) {
@@ -29,8 +37,8 @@ struct bkd_istream * bkd_istream_init(struct bkd_istreamdef * type, struct bkd_i
     stream->user = user;
     stream->buflen = 80;
     stream->linelen = 0;
-    stream->readlen = 0;
-    stream->buffer = BKD_MALLOC(stream->buflen);
+    stream->done = 0;
+    stream->buffer = BKD_MALLOC(80);
     return stream;
 }
 
@@ -39,18 +47,21 @@ void bkd_istream_freebuf(struct bkd_istream * in) {
     in->buffer = NULL;
 }
 
-uint8_t * bkd_getl(struct bkd_istream * in, size_t * len) {
-    if (in->readlen > in->linelen) {
-        in->readlen -= in->linelen;
-        memmove(in->buffer, in->buffer + in->linelen, in->readlen);
-        in->linelen = 0;
-    }
-    int hasline = in->type->line(in);
-    if (hasline) {
-        *len = in->linelen;
-        return in->buffer;
-    } else
+uint8_t * bkd_getl(struct bkd_istream * in, uint32_t  * len) {
+    if (in->done)
         return NULL;
+    in->type->line(in);
+    return bkd_lastl(in, len);
+}
+
+uint8_t * bkd_lastl(struct bkd_istream * in, uint32_t * len) {
+    if (in->buffer != NULL && !in->done) {
+        if (len != NULL)
+            *len = in->linelen;
+        return in->buffer;
+    } else {
+        return NULL;
+    }
 }
 
 #ifndef BKD_NO_STDIO
@@ -97,51 +108,35 @@ struct bkd_ostream * BKD_STDOUT = &_bkd_stdout;
 
 /* stdio input stream */
 
-static int find_newline(uint8_t * s, size_t nmax, int * skip) {
-    int imax = (int) nmax;
-    for (int i = 0; i < imax; i++) {
-        if (s[i] == '\n') {
-            *skip = 0;
-            return i;
-        } else if (s[i] == '\r' && i < nmax - 1 && s[i + 1] == '\n') {
-            *skip = 1;
-            return i;
-        }
-    }
-    return -1;
-}
-
-/* Would rather use 'getline', but is not cross platform and uses
- * own memory managment. Also, I think the current implementation
- * could be shorter. */
 static int file_getl(struct bkd_istream * in) {
-    int skip = 0;
-    int newline = find_newline(in->buffer, in->readlen, &skip);
-    if (newline >= 0) { // We have read all characters on the line.
-        in->linelen = newline;
-        in->readlen -= skip;
-        return 1;
-    } else { // We don't have a complete line in the buffer
-        FILE * f = (FILE *) in->user;
-        while (newline < 0) {
-            if (in->buflen <= in->readlen) {
-                in->buflen = in->readlen * 2;
-                in->buffer = BKD_REALLOC(in->buffer, in->buflen);
-            }
-            size_t bytestoread = in->buflen - in->readlen;
-            size_t read = fread(in->buffer + in->readlen, 1, bytestoread, f);
-            in->readlen += read;
-            if (read < bytestoread) {
-                in->linelen = in->readlen;
-                return (in->linelen > 0) || (read > 0);
+    FILE * file = (FILE *) in->user;
+    uint32_t len = 0;
+    int c;
+    for(;;) {
+        c = fgetc(file);
+        if(c == EOF) {
+            if (len == 0) {
+                in->done = 1;
+                return 0;
+            } else
+                break;
+        }
+        if (c == '\n')
+            break;
+        if(len + 1 >= in->buflen) {
+            uint8_t * newbuf = BKD_REALLOC(in->buffer, len * 2);
+            if(newbuf == NULL) {
+                return 0;
             } else {
-                newline = find_newline(in->buffer + in->readlen, in->buflen - in->readlen, &skip);
+                in->buffer = newbuf;
+                in->buflen = len * 2;
             }
         }
-        in->linelen = newline;
-        in->readlen -= skip;
-        return 1;
+        if (c != '\r')
+            in->buffer[len++] = c;
     }
+    in->linelen = len;
+    return 1;
 }
 
 static int stdin_getl(struct bkd_istream * in) {
@@ -161,10 +156,27 @@ static struct bkd_istreamdef _bkd_stdin_istreamdef = {
 
 static struct bkd_istream _bkd_stdin = {
     &_bkd_stdin_istreamdef,
-    NULL
+    NULL,
+    0,
+    NULL,
+    0,
+    0
 };
 
 struct bkd_istreamdef * BKD_FILE_ISTREAMDEF = &_bkd_file_istreamdef;
 struct bkd_istream * BKD_STDIN = &_bkd_stdin;
+
+struct bkd_istream bkd_file_istream(FILE * file) {
+    struct bkd_istream stream;
+    bkd_istream_init(BKD_FILE_ISTREAMDEF, &stream, file);
+    return stream;
+}
+
+struct bkd_ostream bkd_file_ostream(FILE * file) {
+    struct bkd_ostream stream;
+    stream.type = BKD_FILE_OSTREAMDEF;
+    stream.user = file;
+    return stream;
+}
 
 #endif

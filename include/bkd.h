@@ -163,13 +163,14 @@ struct bkd_istreamdef {
 struct bkd_istream {
     struct bkd_istreamdef * type;
     void * user;
-    size_t buflen; /* size of buffer */
+    uint32_t buflen;
     uint8_t * buffer;
-    size_t readlen; /* size of characters read in buffer */
-    size_t linelen; /* length of first line in buffer */
+    uint32_t linelen;
+    uint8_t done;
 };
 
-uint8_t * bkd_getl(struct bkd_istream * in, size_t * len);
+uint8_t * bkd_getl(struct bkd_istream * in, uint32_t * len);
+uint8_t * bkd_lastl(struct bkd_istream * in, uint32_t * len);
 void bkd_istream_freebuf(struct bkd_istream * in);
 
 extern struct bkd_istreamdef * BKD_STRING_ISTREAMDEF;
@@ -182,6 +183,8 @@ extern struct bkd_istreamdef * BKD_FILE_ISTREAMDEF;
 extern struct bkd_istream * BKD_STDIN;
 extern struct bkd_ostreamdef * BKD_FILE_OSTREAMDEF;
 extern struct bkd_ostream * BKD_STDOUT;
+struct bkd_istream bkd_file_istream(FILE * file);
+struct bkd_ostream bkd_file_ostream(FILE * file);
 #endif
 
 /* Define NULL in case stdlib not included */
@@ -205,6 +208,7 @@ extern const char * bkd_errors[];
 
 /* Main Functions */
 struct bkd_document * bkd_parse(struct bkd_istream * in);
+void bkd_parse_cleanup(struct bkd_document * document);
 
 struct bkd_linenode * bkd_parse_line(struct bkd_linenode * node, uint8_t * utf8, uint32_t len);
 

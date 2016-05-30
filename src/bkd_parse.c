@@ -110,40 +110,62 @@ static enum markupchar charCheckMarkup(uint8_t * c, uint32_t maxlen, uint32_t * 
     return ret;
 }
 
-/* Adds a child node to a linenode and returns it. */
-static struct bkd_linenode * add_child(struct bkd_linenode * parent, uint32_t * childCapacity) {
-    if (*childCapacity <= parent->nodeCount) {
-        *childCapacity = 2 * *childCapacity + 1;
-        if (parent->tree.node == NULL) {
-            parent->tree.node = BKD_MALLOC(*childCapacity);
-        } else {
-            parent->tree.node = BKD_REALLOC(parent->tree.node, *childCapacity);
-        }
-    }
-    if (parent->tree.node == NULL) {
-        BKD_ERROR(BKD_ERROR_OUT_OF_MEMORY);
-        return NULL;
-    }
-    struct bkd_linenode * child = parent->tree.node + (parent->nodeCount++);
-    child->nodeCount = 0;
-    child->markupType = BKD_NONE;
-    child->dataSize = 0;
-    child->data = NULL;
-    child->tree.leaf.text = NULL;
-    child->tree.leaf.textLength = 0;
-    return child;
-}
-
 /* recursivley free line nodes */
-static struct bkd_linenode * cleanup(struct bkd_linenode * l) {
+static void cleanup_linenode(struct bkd_linenode * l) {
     if (l->nodeCount > 0) {
         for (unsigned i = 0; i < l->nodeCount; i++) {
-            cleanup(l->tree.node + i);
+            cleanup_linenode(l->tree.node + i);
         }
+        BKD_FREE(l->tree.node);
     } else {
         BKD_FREE(l->tree.leaf.text);
     }
-    return NULL;
+    if (l->dataSize > 0 && l->data != NULL)
+        BKD_FREE(l->data);
+}
+
+/* Recursively cleanup nodes */
+static void cleanup_node(struct bkd_node * node) {
+    uint32_t max;
+    switch (node->type) {
+        case BKD_PARAGRAPH:
+            cleanup_linenode(&node->data.paragraph.text);
+            break;
+        case BKD_OLIST:
+            max = node->data.olist.itemCount;
+            for (uint32_t i = 0; i < max; i++) {
+                cleanup_node(node->data.olist.items + i);
+            }
+            BKD_FREE(&node->data.olist.items);
+            break;
+        case BKD_ULIST:
+            max = node->data.ulist.itemCount;
+            for (uint32_t i = 0; i < max; i++) {
+                cleanup_node(node->data.ulist.items + i);
+            }
+            BKD_FREE(&node->data.ulist.items);
+            break;
+        case BKD_TABLE:
+            max = node->data.table.cols * node->data.table.rows;
+            for (uint32_t i = 0; i < max; i++) {
+                cleanup_node(node->data.table.items + i);
+            }
+            BKD_FREE(&node->data.table.items);
+            break;
+        case BKD_HEADER:
+            cleanup_linenode(&node->data.header.text);
+            break;
+        case BKD_CODEBLOCK:
+            BKD_FREE(node->data.codeblock.text);
+            if (node->data.codeblock.languageLength > 0)
+                BKD_FREE(node->data.codeblock.language);
+            break;
+        case BKD_COMMENTBLOCK:
+            cleanup_linenode(&node->data.commentblock.text);
+            break;
+        default:
+            break;
+    }
 }
 
 /* Returns the next opening delimiter token, and puts its location in nextPos.
@@ -208,26 +230,6 @@ static int32_t find_balanced(uint8_t * utf8, uint32_t len, uint32_t * firstToken
     }
 
     return -1;
-}
-
-/* Gets the indentation level of a line. */
-static uint32_t get_indent(uint8_t * utf8, uint32_t len) {
-    uint32_t indent = 0;
-    uint32_t pos = 0;
-    while (pos < len) {
-        if (utf8[pos] == ' ' || utf8[pos] == '>') {
-            indent++;
-            pos++;
-        } else if (utf8[pos] == '\t') {
-            indent += 4;
-            pos++;
-        } else {
-            break;
-        }
-    }
-    if (pos == len)
-        return 0;
-    return indent;
 }
 
 /* Convenience function for adding nodes. */
@@ -367,6 +369,230 @@ struct bkd_linenode * bkd_parse_line(struct bkd_linenode * l,
     return l;
 }
 
+/* Gets the indentation level of a line. */
+static uint32_t get_indent(const uint8_t * utf8, uint32_t len) {
+    uint32_t indent = 0;
+    uint32_t pos = 0;
+    while (pos < len) {
+        if (utf8[pos] == ' ') {
+            indent++;
+            pos++;
+        } else if (utf8[pos] == '\t') {
+            indent += 4;
+            pos++;
+        } else {
+            break;
+        }
+    }
+    if (pos == len)
+        return 0;
+    return indent;
+}
+
+/* Strip off n virtual spaces in front of text, as well as trailing whitespace.*/
+static uint8_t * stripn(uint8_t * utf8, uint32_t len, uint32_t n, uint32_t * lenOut) {
+    uint32_t trailing = 0;
+    uint32_t end = len - 1;
+    uint32_t leading = 0;
+    uint32_t pos = 0;
+    uint32_t padding = 0;
+    while (utf8[end] == ' ' || utf8[end] == '\t') {
+        end--;
+        trailing++;
+    }
+    while (leading < n) {
+        if (utf8[pos] == ' ') {
+            leading++;
+        } else if (utf8[pos] == '\t') {
+            leading += 4;
+        } else {
+            break;
+        }
+        pos++;
+    }
+    padding = leading - n;
+    uint32_t newlen = len - trailing - pos + padding;
+    uint8_t * newstring = BKD_MALLOC(newlen);
+    for (uint32_t i = 0; i < padding; i++)
+        newstring[i] = ' ';
+    memcpy(newstring + padding, utf8 + pos, newlen - padding);
+    *lenOut = newlen;
+    return newstring;
+}
+
+/* Checks if a line is empty */
+static int is_empty(uint8_t * utf8, uint32_t len) {
+    for (uint32_t i = 0; i < len; i++) {
+        if (utf8[i] != ' ' && utf8[i] != '\t')
+            return 0;
+    }
+    return 1;
+}
+
+/* The parse state */
+struct bkd_parsestate {
+    struct bkd_istream * in;
+    struct bkd_document * document;
+    uint32_t indent;
+
+    /* Buffer for holding multiple lines */
+    uint32_t bufferCapacity;
+    uint32_t bufferLength;
+    uint8_t * buffer;
+
+    /* Buffer for nodes */
+    uint32_t nodesCapacity;
+    uint32_t nodesLength;
+    struct bkd_node * nodes;
+};
+
+/* Get the type of line to help dispacth. */
+static uint32_t linetype(uint8_t * utf8, uint32_t len) {
+    if (is_empty(utf8, len))
+        return BKD_COUNT_TYPE;
+    if (utf8[0] == '=')
+        return BKD_HEADER;
+    return BKD_PARAGRAPH;
+}
+
+/* Returns a pointer to a child node of a document. Use this only to construct
+ * child node before calling again. */
+static struct bkd_node * add_docnode(struct bkd_parsestate * state) {
+    uint32_t oldlen = state->nodesLength;
+    uint32_t newlen = oldlen + 1;
+    if (newlen >= state->nodesCapacity) {
+        state->nodesCapacity = 2 * newlen;
+        state->nodes = BKD_REALLOC(state->nodes, sizeof(struct bkd_node) * state->nodesCapacity);
+    }
+    if (state->nodes == NULL) {
+        printf("FUCKKCKJSBCKSJ!\n");
+    }
+    state->nodesLength = newlen;
+    return state->nodes + oldlen;
+}
+
+/* Appends text to the buffer in state */
+static int append_text(struct bkd_parsestate * state, uint8_t * utf8, uint32_t len) {
+    if (state->bufferLength + len > state->bufferCapacity) {
+        state->bufferCapacity = 2 * (state->bufferLength + len);
+        state->buffer = BKD_REALLOC(state->buffer, state->bufferCapacity);
+    }
+    memcpy(state->buffer + state->bufferLength, utf8, len);
+    state->bufferLength += len;
+    return 1;
+}
+
+/* Parsing state function for paragraphs */
+static void parse_paragraph(struct bkd_parsestate * state) {
+    uint8_t * utf8;
+    uint32_t len;
+    uint32_t indent;
+    uint32_t startIndent = state->indent;
+    uint8_t space[1] = {' '};
+    utf8 = bkd_lastl(state->in, &len);
+    while (1) {
+        utf8 = stripn(utf8, len, startIndent, &len);
+        append_text(state, utf8, len);
+        BKD_FREE(utf8);
+        /* Prepare for next */
+        utf8 = bkd_getl(state->in, &len);
+        if (utf8 == NULL)
+            break;
+        if (is_empty(utf8, len))
+            break;
+        indent = get_indent(utf8, len);
+        if (indent < startIndent)
+            break;
+        append_text(state, space, 1);
+    }
+    struct bkd_node * node = add_docnode(state);
+    node->type = BKD_PARAGRAPH;
+    bkd_parse_line(&node->data.paragraph.text, state->buffer, state->bufferLength);
+}
+
+/* parsing state function for headers */
+static void parse_header(struct bkd_parsestate * state) {
+    uint8_t * utf8;
+    uint32_t len;
+    utf8 = bkd_lastl(state->in, &len);
+    utf8 = stripn(utf8, len, state->indent, &len);
+    uint8_t * htext = utf8;
+    uint32_t hlen = len;
+    uint32_t hnum = 0;
+    while (htext[0] == '=') {
+        htext++;
+        hlen--;
+        hnum++;
+    }
+    while (htext[0] == ' ' || htext[0] == '\t') {
+        htext++;
+        hlen--;
+    }
+    struct bkd_node * node = add_docnode(state);
+    node->type = BKD_HEADER;
+    node->data.header.size = hnum;
+    bkd_parse_line(&node->data.header.text, htext, hlen);
+    BKD_FREE(utf8);
+    bkd_getl(state->in, NULL);
+}
+
+/* Dispatch to a given parse state based on the last line. */
+static int parse_main(struct bkd_parsestate * state) {
+    state->bufferLength = 0;
+    uint32_t startIndent = state->indent;
+    uint32_t len = 0;
+    uint8_t * utf8 = bkd_lastl(state->in, &len);
+    if (utf8 == NULL)
+        return 0;
+    state->indent = get_indent(utf8, len);
+    uint32_t type = linetype(utf8, len);
+    switch (type) {
+        case BKD_COUNT_TYPE:
+            bkd_getl(state->in, NULL);
+            break;
+        case BKD_HEADER:
+            parse_header(state);
+            break;
+        case BKD_PARAGRAPH:
+            parse_paragraph(state);
+            break;
+        default:
+            break;
+    }
+    state->bufferLength = 0;
+    state->indent = startIndent;
+    return 1;
+}
+
+/* Parse a BKDoc input stream and create an AST. */
 struct bkd_document * bkd_parse(struct bkd_istream * in) {
-    return NULL;
+
+    struct bkd_parsestate state;
+    state.in = in;
+    state.indent = 0;
+    state.bufferLength = 0;
+    state.bufferCapacity = 80;
+    state.buffer = BKD_MALLOC(state.bufferCapacity);
+    state.nodesCapacity = 2;
+    state.nodesLength = 0;
+    state.nodes = BKD_MALLOC(state.nodesCapacity * sizeof(struct bkd_node));
+    state.document = BKD_MALLOC(sizeof(struct bkd_document));
+    /* Prime the input */
+    bkd_getl(state.in, NULL);
+    while (parse_main(&state))
+        ;
+
+    /* Resolve internal links and anchors */
+
+    /* Set up document */
+    state.document->items = BKD_REALLOC(state.nodes, state.nodesLength * sizeof(struct bkd_node));
+    state.document->itemCount = state.nodesLength;
+    BKD_FREE(state.buffer);
+    return state.document;
+}
+
+void bkd_parse_cleanup(struct bkd_document * document) {
+    for (uint32_t i = 0; i < document->itemCount; i++) {
+        cleanup_node(document->items + i);
+    }
 }

@@ -9,12 +9,13 @@ set(CMAKE_C_STANDARD 99)
 
 set(SOURCES
 src/main.c
-src/bkd_errors.c
 src/bkd_parse.c
 src/bkd_html.c
 src/bkd_util.c
 src/bkd_utf8.c
 )
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g -rdynamic -Wall -Wextra")
 
 include_directories("src")
 include_directories("include")

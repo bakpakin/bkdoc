@@ -57,6 +57,13 @@ size_t bkd_utf8_write(uint8_t * s, uint32_t value) {
     return count;
 }
 
+size_t bkd_utf8_writelen(uint8_t * s, uint32_t value, uint32_t maxlen) {
+    size_t size = bkd_utf8_sizep(value);
+    if (size <= maxlen)
+        return bkd_utf8_write(s, value);
+    return size;
+}
+
 size_t bkd_utf8_read(uint8_t * s, uint32_t * ret) {
     uint8_t head = *s;
     if ((head & 0x80) == 0) {
@@ -74,4 +81,11 @@ size_t bkd_utf8_read(uint8_t * s, uint32_t * ret) {
     } else {
         return 0;
     }
+}
+
+size_t bkd_utf8_readlen(uint8_t * s, uint32_t * ret, uint32_t maxlen) {
+    size_t size = bkd_utf8_sizeb(s[0]);
+    if (size <= maxlen)
+        return bkd_utf8_read(s, ret);
+    return size;
 }

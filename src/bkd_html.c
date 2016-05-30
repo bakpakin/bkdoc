@@ -48,9 +48,9 @@ static size_t html_write_utf8(uint32_t point, uint8_t buffer[12]) {
 static void print_html_utf8(struct bkd_ostream * out, uint8_t * s, uint32_t len) {
     uint8_t buffer[12];
     uint32_t codepoint;
-    uint8_t * end = s + len;
-    while (s < end) {
-        s += bkd_utf8_read(s, &codepoint);
+    uint32_t pos = 0;
+    while (pos < len) {
+        pos += bkd_utf8_read(s + pos, &codepoint);
         size_t len = html_write_utf8(codepoint, buffer);
         bkd_putn(out, buffer, len);
     }
@@ -92,7 +92,6 @@ static void print_line(struct bkd_ostream * out, struct bkd_linenode * t) {
 
 static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, struct bkd_node * parent) {
     uint32_t headerSize;
-    uint8_t * text;
     switch (node->type) {
         case BKD_PARAGRAPH:
             bkd_puts(out, "<p>");
@@ -119,7 +118,7 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
             if (headerSize > 6) {
                 headerSize = 6;
             }
-            uint8_t headerdata[] = { 'h', '0' };
+            uint8_t headerdata[2] = {'h', '0'};
             headerdata[1] += headerSize;
             bkd_putc(out, '<');
             bkd_putn(out, headerdata, 2);

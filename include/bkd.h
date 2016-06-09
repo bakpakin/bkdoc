@@ -31,7 +31,8 @@
 #define BKD_CODEBLOCK 6
 #define BKD_COMMENTBLOCK 7
 #define BKD_TEXT 8
-#define BKD_COUNT_TYPE 9
+#define BKD_DATASTRING 9
+#define BKD_COUNT_TYPE 10
 
 /*
  * Denotes the type of a "markup". A "markup" is a transformation
@@ -56,23 +57,35 @@
  */
 #define BKD_SOLID 0
 #define BKD_DOTTED 1
-#define BKD_COUNT_STYLE 2
+#define BKD_INVISIBLE 2
+#define BKD_PAGEBREAK 3
+#define BKD_COUNT_STYLE 4
+
+
+/* Strings */
+struct bkd_string {
+    uint32_t length;
+    uint8_t * data;
+};
+
+/* Returns a substring of string in the same memory location */
+struct bkd_string bkd_strsub(struct bkd_string string, int32_t index1, int32_t index2);
+
+/* Returns a clone of string */
+struct bkd_string bkd_strclone(struct bkd_string string);
 
 struct bkd_node;
 
-/* the 'tree' union should be treated as a 'leaf' if nodeCount is 0, otherwise as a 'node'. */
+/* the 'tree' union should be treated as a 'leaf' if
+ * nodeCount is 0, otherwise as a 'node'. */
 struct bkd_linenode {
     uint8_t markupType;
     uint32_t nodeCount;
     union {
-        struct {
-            uint32_t textLength;
-            uint8_t * text;
-        } leaf;
+        struct bkd_string leaf;
         struct bkd_linenode * node;
     } tree;
-    uint8_t * data; // Optional; only for image and link types.
-    uint32_t dataSize;
+    struct bkd_string data;
 };
 
 struct bkd_paragraph {
@@ -105,10 +118,8 @@ struct bkd_linebreak {
 };
 
 struct bkd_codeblock {
-    uint32_t textLength;
-    uint8_t * text;
-    uint8_t * language;
-    uint32_t languageLength;
+    struct bkd_string text;
+    struct bkd_string language;
 };
 
 struct bkd_commentblock {
@@ -132,6 +143,7 @@ struct bkd_node {
         struct bkd_linebreak linebreak;
         struct bkd_codeblock codeblock;
         struct bkd_commentblock commentblock;
+        struct bkd_string datastring;
     } data;
 };
 
@@ -139,7 +151,7 @@ struct bkd_node {
 struct bkd_ostream;
 
 struct bkd_ostreamdef {
-    int (*stream)(struct bkd_ostream * self, const uint8_t * data, uint32_t size);
+    int (*stream)(struct bkd_ostream * self, const struct bkd_string data);
     int (*flush)(struct bkd_ostream * self);
 };
 
@@ -148,7 +160,7 @@ struct bkd_ostream {
     void * user;
 };
 
-int bkd_putn(struct bkd_ostream * out, const uint8_t * data, uint32_t size);
+int bkd_putn(struct bkd_ostream * out, struct bkd_string str);
 int bkd_puts(struct bkd_ostream * out, const char * str);
 int bkd_putc(struct bkd_ostream * out, char c);
 void bkd_flush(struct bkd_ostream * out);
@@ -163,14 +175,13 @@ struct bkd_istreamdef {
 struct bkd_istream {
     struct bkd_istreamdef * type;
     void * user;
-    uint32_t buflen;
-    uint8_t * buffer;
+    struct bkd_string buffer;
     uint32_t linelen;
     uint8_t done;
 };
 
-uint8_t * bkd_getl(struct bkd_istream * in, uint32_t * len);
-uint8_t * bkd_lastl(struct bkd_istream * in, uint32_t * len);
+struct bkd_string bkd_getl(struct bkd_istream * in);
+struct bkd_string bkd_lastl(struct bkd_istream * in);
 void bkd_istream_freebuf(struct bkd_istream * in);
 
 extern struct bkd_istreamdef * BKD_STRING_ISTREAMDEF;
@@ -192,6 +203,9 @@ struct bkd_ostream bkd_file_ostream(FILE * file);
 #define NULL ((void *)0)
 #endif
 
+/* Define an empty string */
+#define BKD_NULLSTR ((struct bkd_string){0, NULL})
+
 /* Array of error messages. */
 extern const char * bkd_errors[];
 
@@ -210,6 +224,6 @@ extern const char * bkd_errors[];
 struct bkd_document * bkd_parse(struct bkd_istream * in);
 void bkd_parse_cleanup(struct bkd_document * document);
 
-struct bkd_linenode * bkd_parse_line(struct bkd_linenode * node, uint8_t * utf8, uint32_t len);
+struct bkd_linenode * bkd_parse_line(struct bkd_linenode * node, struct bkd_string string);
 
 #endif /* end of include guard: BKD_HEADER_ */

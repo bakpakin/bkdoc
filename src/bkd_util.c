@@ -10,19 +10,58 @@ const char * bkd_errors[] = {
     "Unknown node type."
 };
 
+/* String Utils */
+
+static uint32_t getSubIndex(int32_t i, uint32_t len) {
+    if (i < 0) {
+        return -((-i - 1) % len) + len - 1;
+    } else {
+        return i % len;
+    }
+}
+
+struct bkd_string bkd_strsub(struct bkd_string string, int32_t index1, int32_t index2) {
+    uint32_t realIndex1 = getSubIndex(index1, string.length);
+    uint32_t realIndex2 = getSubIndex(index2, string.length);
+    if (realIndex2 > realIndex1) {
+        return (struct bkd_string) {
+            realIndex2 - realIndex1,
+            string.data + realIndex1
+        };
+    } else {
+        return BKD_NULLSTR;
+    }
+}
+
+struct bkd_string bkd_strclone(struct bkd_string string) {
+    struct bkd_string ret;
+    ret.data = BKD_MALLOC(string.length);
+    ret.length = string.length;
+    memcpy(ret.data, string.data, string.length);
+    return ret;
+}
+
 /* Output streams */
 
-int bkd_putn(struct bkd_ostream * out, const uint8_t * data, uint32_t size) {
-    return out->type->stream(out, data, size);
+int bkd_putn(struct bkd_ostream * out, const struct bkd_string string) {
+    return out->type->stream(out, string);
 }
 
 int bkd_puts(struct bkd_ostream * out, const char * str) {
     uint32_t size = strlen(str);
-    return bkd_putn(out, (const uint8_t *) str, size);
+    struct bkd_string string = {
+        size,
+        (uint8_t *) str
+    };
+    return bkd_putn(out, string);
 }
 
 int bkd_putc(struct bkd_ostream * out, char c) {
-    return bkd_putn(out, (const uint8_t *) &c, 1);
+    struct bkd_string string = {
+        1,
+        (uint8_t *) &c
+    };
+    return bkd_putn(out, string);
 }
 
 void bkd_flush(struct bkd_ostream * out) {
@@ -35,32 +74,30 @@ void bkd_flush(struct bkd_ostream * out) {
 struct bkd_istream * bkd_istream_init(struct bkd_istreamdef * type, struct bkd_istream * stream, void * user) {
     stream->type = type;
     stream->user = user;
-    stream->buflen = 80;
+    stream->buffer.length = 80;
     stream->linelen = 0;
     stream->done = 0;
-    stream->buffer = BKD_MALLOC(80);
+    stream->buffer.data = BKD_MALLOC(80);
     return stream;
 }
 
 void bkd_istream_freebuf(struct bkd_istream * in) {
-    BKD_FREE(in->buffer);
-    in->buffer = NULL;
+    BKD_FREE(in->buffer.data);
+    in->buffer.data = NULL;
 }
 
-uint8_t * bkd_getl(struct bkd_istream * in, uint32_t  * len) {
+struct bkd_string bkd_getl(struct bkd_istream * in) {
     if (in->done)
-        return NULL;
+        return BKD_NULLSTR;
     in->type->line(in);
-    return bkd_lastl(in, len);
+    return bkd_lastl(in);
 }
 
-uint8_t * bkd_lastl(struct bkd_istream * in, uint32_t * len) {
-    if (in->buffer != NULL && !in->done) {
-        if (len != NULL)
-            *len = in->linelen;
+struct bkd_string bkd_lastl(struct bkd_istream * in) {
+    if (in->buffer.data != NULL && !in->done) {
         return in->buffer;
     } else {
-        return NULL;
+        return BKD_NULLSTR;
     }
 }
 
@@ -68,14 +105,14 @@ uint8_t * bkd_lastl(struct bkd_istream * in, uint32_t * len) {
 
 /* stdio output stream */
 
-static int file_put_impl(FILE * file, const uint8_t * data, uint32_t size) {
-    for (uint32_t i = 0; i < size; i++)
-        fputc(data[i], file);
+static int file_put_impl(FILE * file, struct bkd_string string) {
+    for (uint32_t i = 0; i < string.length; i++)
+        fputc(string.data[i], file);
     return 0;
 }
 
-static int file_put(struct bkd_ostream * out, const uint8_t * data, uint32_t size) {
-    return file_put_impl((FILE *) out->user, data, size);
+static int file_put(struct bkd_ostream * out, struct bkd_string string) {
+    return file_put_impl((FILE *) out->user, string);
 }
 
 static int file_flush(struct bkd_ostream * out) {
@@ -83,9 +120,9 @@ static int file_flush(struct bkd_ostream * out) {
     return 0;
 }
 
-static int stdout_put(struct bkd_ostream * out, const uint8_t * data, uint32_t size) {
+static int stdout_put(struct bkd_ostream * out, struct bkd_string string) {
     out->user = stdout;
-    return file_put(out, data, size);
+    return file_put(out, string);
 }
 
 static struct bkd_ostreamdef _bkd_file_ostreamdef = {
@@ -123,17 +160,17 @@ static int file_getl(struct bkd_istream * in) {
         }
         if (c == '\n')
             break;
-        if(len + 1 >= in->buflen) {
-            uint8_t * newbuf = BKD_REALLOC(in->buffer, len * 2);
+        if(len + 1 >= in->buffer.length) {
+            uint8_t * newbuf = BKD_REALLOC(in->buffer.data, len * 2);
             if(newbuf == NULL) {
                 return 0;
             } else {
-                in->buffer = newbuf;
-                in->buflen = len * 2;
+                in->buffer.data = newbuf;
+                in->buffer.length = len * 2;
             }
         }
         if (c != '\r')
-            in->buffer[len++] = c;
+            in->buffer.data[len++] = c;
     }
     in->linelen = len;
     return 1;
@@ -141,7 +178,7 @@ static int file_getl(struct bkd_istream * in) {
 
 static int stdin_getl(struct bkd_istream * in) {
     in->user = stdin;
-    if (!in->buffer)
+    if (!in->buffer.data)
         bkd_istream_init(in->type, in, stdin);
     return file_getl(in);
 }

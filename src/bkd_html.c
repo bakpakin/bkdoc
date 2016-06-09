@@ -45,24 +45,28 @@ static size_t html_write_utf8(uint32_t point, uint8_t buffer[12]) {
     }
 }
 
-static void print_html_utf8(struct bkd_ostream * out, uint8_t * s, uint32_t len) {
+static void print_html_utf8(struct bkd_ostream * out, struct bkd_string string) {
     uint8_t buffer[12];
     uint32_t codepoint;
     uint32_t pos = 0;
-    while (pos < len) {
-        pos += bkd_utf8_read(s + pos, &codepoint);
+    while (pos < string.length) {
+        pos += bkd_utf8_read(string.data + pos, &codepoint);
         size_t len = html_write_utf8(codepoint, buffer);
-        bkd_putn(out, buffer, len);
+        struct bkd_string bufferstring = {
+            len,
+            buffer
+        };
+        bkd_putn(out, bufferstring);
     }
 }
 
 static void print_line(struct bkd_ostream * out, struct bkd_linenode * t) {
     if (t->markupType == BKD_IMAGE) {
         bkd_puts(out, "<img src=\"");
-        bkd_putn(out, t->data, t->dataSize);
+        bkd_putn(out, t->data);
         bkd_puts(out, "\" alt=\"");
         if (t->nodeCount == 0)
-            print_html_utf8(out, t->tree.leaf.text, t->tree.leaf.textLength);
+            print_html_utf8(out, t->tree.leaf);
         bkd_puts(out, "\">");
     } else {
         if (t->markupType != BKD_NONE) {
@@ -70,13 +74,13 @@ static void print_line(struct bkd_ostream * out, struct bkd_linenode * t) {
             bkd_puts(out, MARKUP_TAGS[t->markupType - 1]);
             if (t->markupType == BKD_LINK) {
                 bkd_puts(out, " href=\"");
-                bkd_putn(out, t->data, t->dataSize);
+                bkd_putn(out, t->data);
                 bkd_putc(out, '\"');
             }
             bkd_putc(out, '>');
         }
         if (t->nodeCount == 0) { /* Leaf */
-            print_html_utf8(out, t->tree.leaf.text, t->tree.leaf.textLength);
+            print_html_utf8(out, t->tree.leaf);
         } else { /* Node */
             for (uint32_t i = 0; i < t->nodeCount; i++)
                 print_line(out, t->tree.node + i);
@@ -119,14 +123,18 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
                 headerSize = 6;
             }
             uint8_t headerdata[2] = {'h', '0'};
+            struct bkd_string headerString = {
+                2,
+                headerdata
+            };
             headerdata[1] += headerSize;
             bkd_putc(out, '<');
-            bkd_putn(out, headerdata, 2);
+            bkd_putn(out, headerString);
             bkd_putc(out, '>');
             print_line(out, &node->data.header.text);
             bkd_putc(out, '<');
             bkd_putc(out, '/');
-            bkd_putn(out, headerdata, 2);
+            bkd_putn(out, headerString);
             bkd_putc(out, '>');
             break;
         case BKD_LINEBREAK:
@@ -137,20 +145,25 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
             }
             break;
         case BKD_CODEBLOCK:
-            if (node->data.codeblock.languageLength > 0) {
+            if (node->data.codeblock.language.length > 0) {
                 bkd_puts(out, "<pre><code data-bkd-language=\"");
-                bkd_putn(out, node->data.codeblock.language, node->data.codeblock.languageLength);
+                bkd_putn(out, node->data.codeblock.language);
                 bkd_puts(out, "\">");
             } else {
                 bkd_puts(out, "<pre><code>");
             }
-            bkd_putn(out, node->data.codeblock.text, node->data.codeblock.textLength);
+            bkd_putn(out, node->data.codeblock.text);
             bkd_puts(out, "</code></pre>");
             break;
         case BKD_COMMENTBLOCK:
             bkd_puts(out, "<blockquote>");
             print_line(out, &node->data.commentblock.text);
             bkd_puts(out, "</blockquote>");
+            break;
+        case BKD_DATASTRING:
+            bkd_puts(out, "<div hidden class=\"bkd-datastring\">");
+            bkd_putn(out, node->data.datastring);
+            bkd_puts(out, "</div>");
             break;
         case BKD_TEXT:
             if (parent && (parent->type == BKD_OLIST || parent->type == BKD_ULIST)) {

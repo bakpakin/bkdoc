@@ -40,14 +40,14 @@ static const enum markupchar tokendata[] = {
 };
 
 /* Tokenize the input from a line into only the tokens we need. */
-static enum markupchar charCheckMarkup(uint8_t * c, uint32_t maxlen, uint32_t * tokenLength) {
-    if (maxlen == 0) {
+static enum markupchar charCheckMarkup(struct bkd_string string, uint32_t * tokenLength) {
+    if (string.length == 0) {
         *tokenLength = 0;
         return MUC_NONE;
     }
     uint32_t length = 1;
     enum markupchar ret = MUC_NONE;
-    switch (*c) {
+    switch (*string.data) {
         case '*':
             ret = MUC_STAR;
             break;
@@ -64,7 +64,7 @@ static enum markupchar charCheckMarkup(uint8_t * c, uint32_t maxlen, uint32_t * 
             ret = MUC_PLUS;
             break;
         case '!':
-            if (maxlen > 1 && c[1] == '[') {
+            if (string.length > 1 && string.data[1] == '[') {
                 length = 2;
                 ret = MUC_BANGBRACKET;
             } else {
@@ -87,23 +87,23 @@ static enum markupchar charCheckMarkup(uint8_t * c, uint32_t maxlen, uint32_t * 
             ret = MUC_BACKTICK;
             break;
         case '\\':
-            if (maxlen == 1) {
+            if (string.length == 1) {
                 length = 1;
             } else {
-                length =  bkd_utf8_sizeb(c[1]) + 1;
+                length =  bkd_utf8_sizeb(string.data[1]) + 1;
                 if (length == 1)
                     length = 2;
-                if (length > maxlen)
-                    length = maxlen;
+                if (length > string.length)
+                    length = string.length;
             }
             ret = MUC_NONE;
             break;
         default:
-            length = bkd_utf8_sizeb(*c);
+            length = bkd_utf8_sizeb(*string.data);
             if (length == 0)
                 length = 1;
-            if (length > maxlen)
-                length = maxlen;
+            if (length > string.length)
+                length = string.length;
             break;
     }
     *tokenLength = length;
@@ -118,10 +118,10 @@ static void cleanup_linenode(struct bkd_linenode * l) {
         }
         BKD_FREE(l->tree.node);
     } else {
-        BKD_FREE(l->tree.leaf.text);
+        BKD_FREE(l->tree.leaf.data);
     }
-    if (l->dataSize > 0 && l->data != NULL)
-        BKD_FREE(l->data);
+    if (l->data.length > 0 && l->data.data != NULL)
+        BKD_FREE(l->data.data);
 }
 
 /* Recursively cleanup nodes */
@@ -156,9 +156,9 @@ static void cleanup_node(struct bkd_node * node) {
             cleanup_linenode(&node->data.header.text);
             break;
         case BKD_CODEBLOCK:
-            BKD_FREE(node->data.codeblock.text);
-            if (node->data.codeblock.languageLength > 0)
-                BKD_FREE(node->data.codeblock.language);
+            BKD_FREE(node->data.codeblock.text.data);
+            if (node->data.codeblock.language.length > 0)
+                BKD_FREE(node->data.codeblock.language.data);
             break;
         case BKD_COMMENTBLOCK:
             cleanup_linenode(&node->data.commentblock.text);
@@ -170,12 +170,12 @@ static void cleanup_node(struct bkd_node * node) {
 
 /* Returns the next opening delimiter token, and puts its location in nextPos.
  * If can't find an opening delimiter, returns MUC_NONE. */
-static enum markupchar find_next(uint8_t * utf8, uint32_t len, uint32_t * nextPos, uint32_t * nextLength) {
-    uint32_t pos = 0;
+static enum markupchar find_next(struct bkd_string string, uint32_t * nextPos, uint32_t * nextLength) {
+    int32_t pos = 0;
     uint32_t tokenLength = 0;
     enum markupchar current;
-    while(pos < len) {
-        current = charCheckMarkup(utf8 + pos, len - pos, &tokenLength);
+    while(pos < string.length) {
+        current = charCheckMarkup(bkd_strsub(string, pos, -1), &tokenLength);
         if (tokendata[current] & MUCBIT_OPENER) {
             if (nextPos != NULL)
                 *nextPos = pos;
@@ -189,12 +189,12 @@ static enum markupchar find_next(uint8_t * utf8, uint32_t len, uint32_t * nextPo
 }
 
 /* Tries to find the balancing delimiter for string utf8. Returns -1 if not found, else returns the
- * location following the closing delimiter. */
-static int32_t find_balanced(uint8_t * utf8, uint32_t len, uint32_t * firstTokenLength, uint32_t * finalTokenLength) {
+ * the size of the closing delimiter. */
+static int32_t find_balanced(struct bkd_string string, struct bkd_string * out) {
 
     uint32_t pos = 0;
     uint32_t tokenLength = 0;
-    enum markupchar open = charCheckMarkup(utf8, len, &pos);
+    enum markupchar open = charCheckMarkup(string, &pos);
     uint32_t firstLength = pos;
     if (!(tokendata[open] & MUCBIT_OPENER)) return -1;
     enum markupchar close = open;
@@ -208,21 +208,22 @@ static int32_t find_balanced(uint8_t * utf8, uint32_t len, uint32_t * firstToken
     else if (close == MUC_BANGBRACKET)
         close = MUC_CLOSEBRACKET;
 
-    while (pos < len) {
-        current = charCheckMarkup(utf8 + pos, len - pos, &tokenLength);
+    while (pos < string.length) {
+        struct bkd_string currentString = bkd_strsub(string, pos, -1);
+        current = charCheckMarkup(currentString, &tokenLength);
         if (current == close) {
-            if (firstTokenLength != NULL)
-                *firstTokenLength = firstLength;
-            if (finalTokenLength != NULL)
-                *finalTokenLength = tokenLength;
-            return pos + tokenLength;
+            if (out != NULL) {
+                *out = bkd_strsub(string, firstLength, -1 - tokenLength);
+            }
+            return tokenLength;
         }
         if ((tokendata[open] & MUCBIT_RECURSIVE) && (tokendata[current] & MUCBIT_OPENER)) {
-            int32_t result = find_balanced(utf8 + pos, len - pos, NULL, NULL);
+            struct bkd_string temp;
+            int32_t result = find_balanced(currentString, &temp);
             if (result == -1) { /* Could not balance inner opener */
                 pos += tokenLength;
             } else {
-                pos += result;
+                pos += tokenLength + temp.length + result;
             }
         } else {
             pos += tokenLength;
@@ -239,28 +240,22 @@ static inline struct bkd_linenode * add_node(struct bkd_linenode ** nodes, uint3
         *nodes = BKD_REALLOC(*nodes, *capacity * sizeof(struct bkd_linenode));
     }
 	struct bkd_linenode * child = *nodes + ((*count)++);
-	child->data = NULL;
-	child->dataSize = 0;
+	child->data = BKD_NULLSTR;
 	child->nodeCount = 0;
-	child->tree.leaf.text = NULL;
+	child->tree.leaf = BKD_NULLSTR;
 	child->markupType = BKD_NONE;
 	return child;
 }
 
-/* Escapes special bkdoc characters in fragment of text. Returns a new piece of memory, and stores the memory
- * length in outLen. */
-static uint8_t * escape(uint8_t * utf8, uint32_t len, uint32_t * outLen) {
-    /* For now, no escapes, add escapes later */
-    uint8_t * ret = BKD_MALLOC(len);
-    *outLen = len;
-    memcpy(ret, utf8, len);
-    return ret;
+/* Escapes special bkdoc characters in fragment of text. Returns a new piece of memory. */
+static struct bkd_string escape(struct bkd_string string) {
+    return bkd_strclone(string);
 }
 
 /* Puts a string of utf8 text into a linenode struct. */
-struct bkd_linenode * bkd_parse_line(struct bkd_linenode * l,
-        uint8_t * utf8,
-        uint32_t len) {
+/* TODO: Refactor for cleaner use of bkd_string struct instead of passing pointer and length
+ * around separately. */
+struct bkd_linenode * bkd_parse_line(struct bkd_linenode * l, struct bkd_string string) {
 
     uint32_t nodeCount = 0;
     uint32_t nodeCapacity = 3;
@@ -277,13 +272,13 @@ struct bkd_linenode * bkd_parse_line(struct bkd_linenode * l,
     /* Read all of string */
     while (1) {
 
-        m = find_next(utf8 + pos, len - pos, &next, &openerLength);
+        m = find_next(string, &next, &openerLength);
 
         /* We're done if no next special */
         if (m == MUC_NONE) {
-            if (last < len) {
+            if (last < string.length) {
                 child = add_node(&nodes, &nodeCapacity, &nodeCount);
-                child->tree.leaf.text = escape(utf8 + last, len - last, &child->tree.leaf.textLength);
+                child->tree.leaf = escape(bkd_strsub(string, last, -1));
             }
             break;
         }
@@ -291,20 +286,21 @@ struct bkd_linenode * bkd_parse_line(struct bkd_linenode * l,
         pos += next;
         int32_t closerPosAfter = -1;
         if (m != MUC_OPENPAREN)
-            closerPosAfter = find_balanced(utf8 + pos, len - pos, &openerLength, &closerLength);
+            closerPosAfter = find_balanced(bkd_strsub(string, pos, -1), &openerLength, &closerLength);
         if (closerPosAfter > 0) {
             if (last < pos) {
                 child = add_node(&nodes, &nodeCapacity, &nodeCount);
-                child->tree.leaf.text = escape(utf8 + last, pos - last, &child->tree.leaf.textLength);
+                child->tree.leaf = escape(bkd_strsub(string, last, pos));
                 last = pos;
             }
             child = add_node(&nodes, &nodeCapacity, &nodeCount);
+            struct bkd_string current = bkd_strsub(string, pos + openerLength, pos + closerPosAfter - closerLength);
             uint8_t * current = utf8 + pos + openerLength;
             uint32_t currentLength = closerPosAfter - openerLength - closerLength;
             if (tokendata[m] & MUCBIT_RECURSIVE) {
                 bkd_parse_line(child, current, currentLength);
             } else {
-                child->tree.leaf.text = escape(current, currentLength, &child->tree.leaf.textLength);
+                child->tree.leaf = escape(current, currentLength);
             }
             /* Set the child's markup type */
             switch (m) {
@@ -360,8 +356,7 @@ struct bkd_linenode * bkd_parse_line(struct bkd_linenode * l,
         *l = *nodes;
         BKD_FREE(nodes);
     } else {
-        l->data = NULL;
-        l->dataSize = 0;
+        l->data = BKD_NULLSTR;
         l->markupType = BKD_NONE;
         l->tree.node = nodes;
         l->nodeCount = nodeCount;
@@ -389,7 +384,8 @@ static uint32_t get_indent(const uint8_t * utf8, uint32_t len) {
     return indent;
 }
 
-/* Strip off n virtual spaces in front of text, as well as trailing whitespace.*/
+/* Strip off n virtual spaces in front of text, as well as trailing whitespace.
+ * Mallocs a new string. (In order to accomadate the potential of padding). */
 static uint8_t * stripn(uint8_t * utf8, uint32_t len, uint32_t n, uint32_t * lenOut) {
     uint32_t trailing = 0;
     uint32_t end = len - 1;
@@ -446,11 +442,26 @@ struct bkd_parsestate {
     struct bkd_node * nodes;
 };
 
+/* Allow deep recursion */
+static int parse_main(struct bkd_parsestate * state);
+
 /* Get the type of line to help dispacth. */
 static uint32_t linetype(uint8_t * utf8, uint32_t len) {
     if (is_empty(utf8, len))
         return BKD_COUNT_TYPE;
-    if (utf8[0] == '=')
+    while ((len > 0) && (utf8[0] == ' ' || utf8[0] == '\t')) {
+        utf8++;
+        len--;
+    }
+    if (utf8[0] == '=') {
+        uint8_t * end = utf8;
+        uint32_t endlen = len;
+        while ((endlen > 0) && (end[0] == '=')) {
+            end++;
+            endlen--;
+        }
+
+    }
         return BKD_HEADER;
     return BKD_PARAGRAPH;
 }
@@ -508,6 +519,15 @@ static void parse_paragraph(struct bkd_parsestate * state) {
     struct bkd_node * node = add_docnode(state);
     node->type = BKD_PARAGRAPH;
     bkd_parse_line(&node->data.paragraph.text, state->buffer, state->bufferLength);
+}
+
+static void parse_olist(struct bkd_parsestate * state) {
+    uint8_t * utf8;
+    uint32_t len;
+    utf8 = bkd_lastl(state->in, &len);
+    while (1) {
+
+    }
 }
 
 /* parsing state function for headers */

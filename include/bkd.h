@@ -19,6 +19,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define TRC() printf("TRACE - %d\n", __LINE__)
+
 /*
  * Denotes the type of a block level element.
  */
@@ -61,7 +63,6 @@
 #define BKD_PAGEBREAK 3
 #define BKD_COUNT_STYLE 4
 
-
 /* Strings */
 struct bkd_string {
     uint32_t length;
@@ -73,6 +74,21 @@ struct bkd_string bkd_strsub(struct bkd_string string, int32_t index1, int32_t i
 
 /* Returns a clone of string */
 struct bkd_string bkd_strclone(struct bkd_string string);
+
+/* Buffers */
+struct bkd_buffer {
+    uint32_t capacity;
+    struct bkd_string string;
+};
+
+/* Create a new buffer */
+struct bkd_buffer bkd_bufnew(uint32_t capacity);
+
+/* Free a buffer */
+void bkd_buffree(struct bkd_buffer buffer);
+
+/* Push a string onto the buffer */
+struct bkd_buffer bkd_bufpush(struct bkd_buffer buffer, struct bkd_string string);
 
 struct bkd_node;
 

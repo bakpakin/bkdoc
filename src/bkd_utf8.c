@@ -1,6 +1,9 @@
 #include "bkd_utf8.h"
 #include <string.h>
 
+/**
+ * Returns the number of bytes that are needed to represent a codepoint in UTF8.
+ */
 size_t bkd_utf8_sizep(uint32_t codepoint) {
     if (codepoint < 0x80) {
         return 1;
@@ -15,6 +18,9 @@ size_t bkd_utf8_sizep(uint32_t codepoint) {
     }
 }
 
+/**
+ * Return the number of bytes in a UTF8 character given the first byte.
+ */
 size_t bkd_utf8_sizeb(uint8_t head) {
     if ((head & 0x80) == 0) {
         return 1;
@@ -29,6 +35,10 @@ size_t bkd_utf8_sizeb(uint8_t head) {
     }
 }
 
+/**
+ * Write the codepoint to the string s in UTF8 encoding.
+ * s should have space for at least four bytes.
+ */
 size_t bkd_utf8_write(uint8_t * s, uint32_t value) {
     uint8_t octets[4];
     size_t count;
@@ -57,6 +67,12 @@ size_t bkd_utf8_write(uint8_t * s, uint32_t value) {
     return count;
 }
 
+/**
+ * Write up to maxlen bytes to strings. Otherwise, is the same as
+ * bkd_utf8_write. If maxlen is shorter than the required number of bytes
+ * to write the character, then this function will return the required number
+ * of bytes.
+ */
 size_t bkd_utf8_writelen(uint8_t * s, uint32_t value, uint32_t maxlen) {
     size_t size = bkd_utf8_sizep(value);
     if (size <= maxlen)
@@ -64,6 +80,9 @@ size_t bkd_utf8_writelen(uint8_t * s, uint32_t value, uint32_t maxlen) {
     return size;
 }
 
+/**
+ * Reads string s into ret. Returns the amount of memory read into. Can be up to 4 bytes.
+ */
 size_t bkd_utf8_read(uint8_t * s, uint32_t * ret) {
     uint8_t head = *s;
     if ((head & 0x80) == 0) {
@@ -83,6 +102,10 @@ size_t bkd_utf8_read(uint8_t * s, uint32_t * ret) {
     }
 }
 
+/**
+ * Same as bkd_utf8_read, but will only read maxlen bytes at most. If the character
+ * being read is too long, this function will return the length of the current character.
+ */
 size_t bkd_utf8_readlen(uint8_t * s, uint32_t * ret, uint32_t maxlen) {
     size_t size = bkd_utf8_sizeb(s[0]);
     if (size <= maxlen)

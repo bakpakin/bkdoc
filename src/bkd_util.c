@@ -12,17 +12,20 @@ const char * bkd_errors[] = {
 
 /* String Utils */
 
-static uint32_t getSubIndex(int32_t i, uint32_t len) {
+static inline uint32_t getSubIndex(int32_t i, uint32_t len) {
     if (i < 0) {
-        return -((-i - 1) % len) + len - 1;
+        return len + i;
     } else {
-        return i % len;
+        return i;
     }
 }
 
+/**
+ * Returns a substring in constant time. Uses negative indexing like Lua. Includes index1 and excludes index2.
+ */
 struct bkd_string bkd_strsub(struct bkd_string string, int32_t index1, int32_t index2) {
-    uint32_t realIndex1 = getSubIndex(index1, string.length);
-    uint32_t realIndex2 = getSubIndex(index2, string.length);
+    uint32_t realIndex1 = getSubIndex(index1, string.length) % (string.length + 1);
+    uint32_t realIndex2 = getSubIndex(index2, string.length) % (string.length + 1);
     if (realIndex2 > realIndex1) {
         return (struct bkd_string) {
             realIndex2 - realIndex1,
@@ -39,6 +42,31 @@ struct bkd_string bkd_strclone(struct bkd_string string) {
     ret.length = string.length;
     memcpy(ret.data, string.data, string.length);
     return ret;
+}
+
+/* Buffers */
+
+struct bkd_buffer bkd_bufnew(uint32_t capacity) {
+    struct bkd_buffer ret;
+    ret.capacity = capacity;
+    ret.string.data = BKD_MALLOC(capacity);
+    ret.string.length = 0;
+    return ret;
+}
+
+void bkd_buffree(struct bkd_buffer buffer) {
+    BKD_FREE(buffer.string.data);
+}
+
+struct bkd_buffer bkd_bufpush(struct bkd_buffer buffer, struct bkd_string string) {
+    uint32_t newLength = buffer.string.length + string.length;
+    if (buffer.capacity < newLength) {
+        buffer.capacity = 1.5 * newLength + 1;
+        buffer.string.data = BKD_REALLOC(buffer.string.data, buffer.capacity);
+    }
+    memcpy(buffer.string.data + buffer.string.length, string.data, string.length);
+    buffer.string.length = newLength;
+    return buffer;
 }
 
 /* Output streams */
@@ -95,7 +123,7 @@ struct bkd_string bkd_getl(struct bkd_istream * in) {
 
 struct bkd_string bkd_lastl(struct bkd_istream * in) {
     if (in->buffer.data != NULL && !in->done) {
-        return in->buffer;
+        return bkd_strsub(in->buffer, 0, in->linelen);
     } else {
         return BKD_NULLSTR;
     }

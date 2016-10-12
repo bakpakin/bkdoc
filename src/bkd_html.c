@@ -2,37 +2,26 @@
 #include "bkd_html.h"
 #include "bkd_utf8.h"
 
-static const char * MARKUP_TAGS[] = {
-    "strong",
-    "em",
-    "code",
-    "div",
-    "img",
-    "a",
-    "del",
-    "u"
-};
-
 /* Use numeric escapes for most things for easier generation */
 static size_t html_escape_utf8(uint32_t point, uint8_t buffer[12]) {
     static const uint8_t hexDigits[] = {
         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B' ,'C', 'D', 'E', 'F'
     };
-    uint8_t octets[4];
-    size_t count = bkd_utf8_write(octets, point);
-    if (count == 0) { /* Invalid UTF-8 */
-        return 0;
-    }
-    uint32_t requiredLen = 4 + 2 * count;
+    uint8_t digitStack[12];
+    uint32_t digitsTop = 0;
+    uint32_t len = 3;
     buffer[0] = '&';
     buffer[1] = '#';
     buffer[2] = 'x';
-    for (uint32_t i = 0; i < count; i++) {
-        buffer[3 + 2 * i] = hexDigits[octets[i] >> 4];
-        buffer[4 + 2 * i] = hexDigits[octets[i] & 0xF];
+    while (point > 0) {
+        digitStack[digitsTop++] = hexDigits[point % 16];
+        point /= 16;
     }
-    buffer[requiredLen - 1] = ';';
-    return requiredLen;
+    while (digitsTop > 0) {
+        buffer[len++] = digitStack[--digitsTop];
+    }
+    buffer[len++] = ';';
+    return len;
 }
 
 static size_t html_write_utf8(uint32_t point, uint8_t buffer[12]) {
@@ -60,38 +49,70 @@ static void print_html_utf8(struct bkd_ostream * out, struct bkd_string string) 
     }
 }
 
-static void print_line(struct bkd_ostream * out, struct bkd_linenode * t) {
-    if (t->markupType == BKD_IMAGE) {
-        bkd_puts(out, "<img src=\"");
-        bkd_putn(out, t->data);
-        bkd_puts(out, "\" alt=\"");
-        if (t->nodeCount == 0)
-            print_html_utf8(out, t->tree.leaf);
-        bkd_puts(out, "\">");
+static void print_line(struct bkd_ostream * out, struct bkd_linenode * t);
+
+static void print_codeinline(struct bkd_ostream * out, struct bkd_linenode * t) {
+    uint32_t i;
+    if (t->markup & BKD_CODEINLINE) bkd_puts(out, "<code>");
+    if (t->nodeCount > 0) {
+        for (i = 0; i < t->nodeCount; i++) {
+            print_line(out, t->tree.node + i);
+        }
     } else {
-        if (t->markupType != BKD_NONE) {
-            bkd_putc(out, '<');
-            bkd_puts(out, MARKUP_TAGS[t->markupType - 1]);
-            if (t->markupType == BKD_LINK) {
-                bkd_puts(out, " href=\"");
-                bkd_putn(out, t->data);
-                bkd_putc(out, '\"');
-            }
-            bkd_putc(out, '>');
-        }
-        if (t->nodeCount == 0) { /* Leaf */
-            print_html_utf8(out, t->tree.leaf);
-        } else { /* Node */
-            for (uint32_t i = 0; i < t->nodeCount; i++)
-                print_line(out, t->tree.node + i);
-        }
-        if (t->markupType != BKD_NONE) {
-            bkd_putc(out, '<');
-            bkd_putc(out, '/');
-            bkd_puts(out, MARKUP_TAGS[t->markupType - 1]);
-            bkd_putc(out, '>');
-        }
+        print_html_utf8(out, t->tree.leaf);
     }
+    if (t->markup & BKD_CODEINLINE) bkd_puts(out, "</code>");
+}
+
+static void print_image(struct bkd_ostream * out, struct bkd_linenode * t) {
+    if (t->markup & BKD_IMAGE) {
+        bkd_puts(out, "<img src=\"");
+        print_html_utf8(out, t->data);
+        bkd_puts(out, "\"></img>");
+    } else {
+        return print_codeinline(out, t);
+    }
+}
+
+static void print_math(struct bkd_ostream * out, struct bkd_linenode * t) {
+    /* NYI */
+    return print_image(out, t);
+}
+
+static void print_link(struct bkd_ostream * out, struct bkd_linenode * t) {
+    if (t->markup & BKD_LINK) {
+        bkd_puts(out, "<a href=\"");
+        print_html_utf8(out, t->data);
+        bkd_puts(out, "\">");
+        print_math(out, t);
+        bkd_puts(out, "</a>");
+    } else {
+        return print_math(out, t);
+    }
+}
+
+static void print_underline(struct bkd_ostream * out, struct bkd_linenode * t) {
+    if (t->markup & BKD_UNDERLINE) bkd_puts(out, "<u>");
+    print_link(out, t);
+    if (t->markup & BKD_UNDERLINE) bkd_puts(out, "</u>");
+}
+
+static void print_strikethrough(struct bkd_ostream * out, struct bkd_linenode * t) {
+    if (t->markup & BKD_STRIKETHROUGH) bkd_puts(out, "<del>");
+    print_underline(out, t);
+    if (t->markup & BKD_STRIKETHROUGH) bkd_puts(out, "</del>");
+}
+
+static void print_italics(struct bkd_ostream * out, struct bkd_linenode * t) {
+    if (t->markup & BKD_ITALICS) bkd_puts(out, "<em>");
+    print_strikethrough(out, t);
+    if (t->markup & BKD_ITALICS) bkd_puts(out, "</em>");
+}
+
+static void print_line(struct bkd_ostream * out, struct bkd_linenode * t) {
+    if (t->markup & BKD_BOLD) bkd_puts(out, "<strong>");
+    print_italics(out, t);
+    if (t->markup & BKD_BOLD) bkd_puts(out, "</strong>");
 }
 
 static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, struct bkd_node * parent) {
@@ -137,7 +158,7 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
             bkd_putn(out, headerString);
             bkd_putc(out, '>');
             break;
-        case BKD_LINEBREAK:
+        case BKD_HORIZONTALRULE:
             if (node->data.linebreak.style == BKD_DOTTED) {
                 bkd_puts(out, "<hr class=\"bkd_dotted\">");
             } else {
@@ -159,6 +180,12 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
             bkd_puts(out, "<blockquote>");
             print_line(out, &node->data.commentblock.text);
             bkd_puts(out, "</blockquote>");
+            break;
+        case BKD_DOCUMENT:
+            bkd_puts(out, "<div class=\"bkd-subdoc\">");
+            for (uint32_t i = 0; i < node->data.subdoc.itemCount; i++)
+                print_node(out, node->data.subdoc.items + i, node);
+            bkd_puts(out, "</div>");
             break;
         case BKD_DATASTRING:
             bkd_puts(out, "<div hidden class=\"bkd-datastring\">");

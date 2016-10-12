@@ -1,5 +1,6 @@
 #include "bkd.h"
 #include "bkd_utf8.h"
+#include "bkd_string.h"
 #include <string.h>
 
 /* Error strings */
@@ -7,67 +8,9 @@ const char * bkd_errors[] = {
     NULL,
     "Out of memory.",
     "Invalid markup type.",
-    "Unknown node type."
+    "Unknown node type.",
+    "Unknown error."
 };
-
-/* String Utils */
-
-static inline uint32_t getSubIndex(int32_t i, uint32_t len) {
-    if (i < 0) {
-        return len + i;
-    } else {
-        return i;
-    }
-}
-
-/**
- * Returns a substring in constant time. Uses negative indexing like Lua. Includes index1 and excludes index2.
- */
-struct bkd_string bkd_strsub(struct bkd_string string, int32_t index1, int32_t index2) {
-    uint32_t realIndex1 = getSubIndex(index1, string.length) % (string.length + 1);
-    uint32_t realIndex2 = getSubIndex(index2, string.length) % (string.length + 1);
-    if (realIndex2 > realIndex1) {
-        return (struct bkd_string) {
-            realIndex2 - realIndex1,
-            string.data + realIndex1
-        };
-    } else {
-        return BKD_NULLSTR;
-    }
-}
-
-struct bkd_string bkd_strclone(struct bkd_string string) {
-    struct bkd_string ret;
-    ret.data = BKD_MALLOC(string.length);
-    ret.length = string.length;
-    memcpy(ret.data, string.data, string.length);
-    return ret;
-}
-
-/* Buffers */
-
-struct bkd_buffer bkd_bufnew(uint32_t capacity) {
-    struct bkd_buffer ret;
-    ret.capacity = capacity;
-    ret.string.data = BKD_MALLOC(capacity);
-    ret.string.length = 0;
-    return ret;
-}
-
-void bkd_buffree(struct bkd_buffer buffer) {
-    BKD_FREE(buffer.string.data);
-}
-
-struct bkd_buffer bkd_bufpush(struct bkd_buffer buffer, struct bkd_string string) {
-    uint32_t newLength = buffer.string.length + string.length;
-    if (buffer.capacity < newLength) {
-        buffer.capacity = 1.5 * newLength + 1;
-        buffer.string.data = BKD_REALLOC(buffer.string.data, buffer.capacity);
-    }
-    memcpy(buffer.string.data + buffer.string.length, string.data, string.length);
-    buffer.string.length = newLength;
-    return buffer;
-}
 
 /* Output streams */
 
@@ -102,16 +45,13 @@ void bkd_flush(struct bkd_ostream * out) {
 struct bkd_istream * bkd_istream_init(struct bkd_istreamdef * type, struct bkd_istream * stream, void * user) {
     stream->type = type;
     stream->user = user;
-    stream->buffer.length = 80;
-    stream->linelen = 0;
     stream->done = 0;
-    stream->buffer.data = BKD_MALLOC(80);
+    stream->buffer = bkd_bufnew(80);
     return stream;
 }
 
 void bkd_istream_freebuf(struct bkd_istream * in) {
-    BKD_FREE(in->buffer.data);
-    in->buffer.data = NULL;
+    bkd_buffree(in->buffer);
 }
 
 struct bkd_string bkd_getl(struct bkd_istream * in) {
@@ -122,8 +62,8 @@ struct bkd_string bkd_getl(struct bkd_istream * in) {
 }
 
 struct bkd_string bkd_lastl(struct bkd_istream * in) {
-    if (in->buffer.data != NULL && !in->done) {
-        return bkd_strsub(in->buffer, 0, in->linelen);
+    if (!in->done) {
+        return in->buffer.string;
     } else {
         return BKD_NULLSTR;
     }
@@ -175,12 +115,12 @@ struct bkd_ostream * BKD_STDOUT = &_bkd_stdout;
 
 static int file_getl(struct bkd_istream * in) {
     FILE * file = (FILE *) in->user;
-    uint32_t len = 0;
     int c;
+    in->buffer.string.length = 0; /* Clear th buffer */
     for(;;) {
         c = fgetc(file);
         if(c == EOF) {
-            if (len == 0) {
+            if (in->buffer.string.length == 0) {
                 in->done = 1;
                 return 0;
             } else
@@ -188,26 +128,16 @@ static int file_getl(struct bkd_istream * in) {
         }
         if (c == '\n')
             break;
-        if(len + 1 >= in->buffer.length) {
-            uint8_t * newbuf = BKD_REALLOC(in->buffer.data, len * 2);
-            if(newbuf == NULL) {
-                return 0;
-            } else {
-                in->buffer.data = newbuf;
-                in->buffer.length = len * 2;
-            }
-        }
         if (c != '\r')
-            in->buffer.data[len++] = c;
+            in->buffer = bkd_bufpushb(in->buffer, c);
     }
-    in->linelen = len;
     return 1;
 }
 
 static int stdin_getl(struct bkd_istream * in) {
-    in->user = stdin;
-    if (!in->buffer.data)
+    if (in->user != stdin) {
         bkd_istream_init(in->type, in, stdin);
+    }
     return file_getl(in);
 }
 
@@ -222,9 +152,9 @@ static struct bkd_istreamdef _bkd_stdin_istreamdef = {
 static struct bkd_istream _bkd_stdin = {
     &_bkd_stdin_istreamdef,
     NULL,
-    0,
-    NULL,
-    0,
+    {
+        0, {0, 0}
+    },
     0
 };
 

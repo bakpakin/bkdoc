@@ -19,7 +19,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define TRC() printf("TRACE - %d\n", __LINE__)
+#define TRC() printf("TRACE: line %d in %s\n", __LINE__, __FILE__)
 
 /*
  * Denotes the type of a block level element.
@@ -29,12 +29,13 @@
 #define BKD_ULIST 2
 #define BKD_TABLE 3
 #define BKD_HEADER 4
-#define BKD_LINEBREAK 5
+#define BKD_HORIZONTALRULE 5
 #define BKD_CODEBLOCK 6
 #define BKD_COMMENTBLOCK 7
 #define BKD_TEXT 8
 #define BKD_DATASTRING 9
-#define BKD_COUNT_TYPE 10
+#define BKD_DOCUMENT 10
+#define BKD_COUNT_TYPE 11
 
 /*
  * Denotes the type of a "markup". A "markup" is a transformation
@@ -46,13 +47,12 @@
 #define BKD_NONE 0
 #define BKD_BOLD 1
 #define BKD_ITALICS 2
-#define BKD_CODEINLINE 3
-#define BKD_MATH 4
-#define BKD_IMAGE 5
-#define BKD_LINK 6
-#define BKD_STRIKETHROUGH 7
+#define BKD_STRIKETHROUGH 4
 #define BKD_UNDERLINE 8
-#define BKD_COUNT_MARKUP 9
+#define BKD_LINK 16
+#define BKD_MATH 32
+#define BKD_IMAGE 64
+#define BKD_CODEINLINE 128
 
 /*
  * Style
@@ -69,33 +69,12 @@ struct bkd_string {
     uint8_t * data;
 };
 
-/* Returns a substring of string in the same memory location */
-struct bkd_string bkd_strsub(struct bkd_string string, int32_t index1, int32_t index2);
-
-/* Returns a clone of string */
-struct bkd_string bkd_strclone(struct bkd_string string);
-
-/* Buffers */
-struct bkd_buffer {
-    uint32_t capacity;
-    struct bkd_string string;
-};
-
-/* Create a new buffer */
-struct bkd_buffer bkd_bufnew(uint32_t capacity);
-
-/* Free a buffer */
-void bkd_buffree(struct bkd_buffer buffer);
-
-/* Push a string onto the buffer */
-struct bkd_buffer bkd_bufpush(struct bkd_buffer buffer, struct bkd_string string);
-
 struct bkd_node;
 
 /* the 'tree' union should be treated as a 'leaf' if
  * nodeCount is 0, otherwise as a 'node'. */
 struct bkd_linenode {
-    uint8_t markupType;
+    uint32_t markup;
     uint32_t nodeCount;
     union {
         struct bkd_string leaf;
@@ -160,6 +139,7 @@ struct bkd_node {
         struct bkd_codeblock codeblock;
         struct bkd_commentblock commentblock;
         struct bkd_string datastring;
+        struct bkd_document subdoc;
     } data;
 };
 
@@ -188,11 +168,16 @@ struct bkd_istreamdef {
     int (*line)(struct bkd_istream * self);
 };
 
+/* Buffers */
+struct bkd_buffer {
+    uint32_t capacity;
+    struct bkd_string string;
+};
+
 struct bkd_istream {
     struct bkd_istreamdef * type;
     void * user;
-    struct bkd_string buffer;
-    uint32_t linelen;
+    struct bkd_buffer buffer;
     uint8_t done;
 };
 
@@ -206,6 +191,7 @@ extern struct bkd_ostreamdef * BKD_STRING_OSTREAMDEF;
 /* Standard IO Streams */
 #ifndef BKD_NO_STDIO
 #include <stdio.h>
+#define SPIT(S) do { bkd_putn(BKD_STDOUT, (S)); bkd_putc(BKD_STDOUT, '\n'); } while (0)
 extern struct bkd_istreamdef * BKD_FILE_ISTREAMDEF;
 extern struct bkd_istream * BKD_STDIN;
 extern struct bkd_ostreamdef * BKD_FILE_OSTREAMDEF;
@@ -235,10 +221,11 @@ extern const char * bkd_errors[];
 #define BKD_ERROR_INVALID_MARKUP_TYPE 2
 #define BKD_ERROR_INVALID_MARKUP_PATTERN 3
 #define BKD_ERROR_UNKNOWN_NODE 4
+#define BKD_ERROR_UNKNOWN 5
 
 /* Main Functions */
 struct bkd_document * bkd_parse(struct bkd_istream * in);
-void bkd_parse_cleanup(struct bkd_document * document);
+void bkd_docfree(struct bkd_document * document);
 
 struct bkd_linenode * bkd_parse_line(struct bkd_linenode * node, struct bkd_string string);
 

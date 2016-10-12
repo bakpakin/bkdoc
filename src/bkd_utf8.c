@@ -61,6 +61,7 @@ size_t bkd_utf8_write(uint8_t * s, uint32_t value) {
         octets[2] = ((value >> 6) & 0x3F) | 0x80;
         octets[3] = (value & 0x3F) | 0x80;
     } else {
+        /* Although longer characters are possible, they are not valid unicode. */
         return 0;
     }
     memcpy(s, octets, count);
@@ -89,13 +90,13 @@ size_t bkd_utf8_read(uint8_t * s, uint32_t * ret) {
         *ret = head;
         return 1;
     } else if ((head & 0xE0) == 0xC0) {
-        *ret = (s[1] & 0x3F) + (head & 0x1F) * 0x40;
+        *ret = (s[1] & 0x3F) + ((head & 0x0F) << 6);
         return 2;
     } else if ((head & 0xF0) == 0xE0) {
-        *ret = (s[2] & 0x3F) + (s[1] & 0x3F) * 0x20 + (head & 0x0F) * 0x800;
+        *ret = (s[2] & 0x3F) + ((s[1] & 0x3F) << 6) + ((head & 0x1F) << 12);
         return 3;
     } else if ((head & 0xF8) == 0xF0) {
-        *ret = (s[3] & 0x3F) + (s[2] & 0x3F) * 0x10 + (s[1] & 0x3F) * 0x400 + (head & 0x07) * 0x10000;
+        *ret = (s[3] & 0x3F) + ((s[2] & 0x3F) << 6) + ((s[1] & 0x3F) << 12) + ((head & 0x07) << 18);
         return 4;
     } else {
         return 0;
@@ -111,4 +112,35 @@ size_t bkd_utf8_readlen(uint8_t * s, uint32_t * ret, uint32_t maxlen) {
     if (size <= maxlen)
         return bkd_utf8_read(s, ret);
     return size;
+}
+
+size_t bkd_utf8_readlenback(uint8_t * s, uint32_t * ret, uint32_t maxback) {
+    uint8_t * head = bkd_utf8_findhead(s - 1, s - maxback);
+    uint32_t len = s - head;
+    return bkd_utf8_readlen(head, ret, len);
+}
+
+size_t bkd_utf8_readback(uint8_t * s, uint32_t * ret) {
+    return bkd_utf8_readlenback(s, ret, 4);
+}
+
+/***
+ * Helpers
+ */
+
+uint8_t * bkd_utf8_findhead(uint8_t * s, uint8_t * start) {
+    while ((*s & 0xC0) == 0x80) {
+        if (s <= start)
+            return NULL;
+        s--;
+    }
+    return s;
+}
+
+/**
+ * Checks if a unicode codepoint is whitespace.
+ */
+int bkd_utf8_whitespace(uint32_t codepoint) {
+    /* There might be some other unicode to consider later, in the higher regions. */
+    return (codepoint > 8 && codepoint < 14) || codepoint == 32;
 }

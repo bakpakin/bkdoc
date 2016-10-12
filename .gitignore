@@ -1,3 +1,5 @@
+# Ignore build folder
+/build
 
 # Created by https://www.gitignore.io/api/c
 

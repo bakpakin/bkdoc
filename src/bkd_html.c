@@ -34,12 +34,22 @@ static size_t html_write_utf8(uint32_t point, uint8_t buffer[12]) {
     }
 }
 
-static void print_html_utf8(struct bkd_ostream * out, struct bkd_string string) {
+static const uint64_t
+    htmlflag_newline = 1 << 0;
+
+#define CASE(codepoint, flag, string) case codepoint: if (flags & (flag)) { bkd_puts(out, string); continue; } break;
+
+static void print_html_utf8(struct bkd_ostream * out, struct bkd_string string, uint64_t flags) {
     uint8_t buffer[12];
     uint32_t codepoint;
     uint32_t pos = 0;
     while (pos < string.length) {
         pos += bkd_utf8_read(string.data + pos, &codepoint);
+        switch (codepoint) {
+            CASE('\n', htmlflag_newline, "<br>")
+            default:
+                break;
+        }
         size_t len = html_write_utf8(codepoint, buffer);
         struct bkd_string bufferstring = {
             len,
@@ -48,6 +58,8 @@ static void print_html_utf8(struct bkd_ostream * out, struct bkd_string string) 
         bkd_putn(out, bufferstring);
     }
 }
+
+#undef CASE
 
 static void print_line(struct bkd_ostream * out, struct bkd_linenode * t);
 
@@ -59,7 +71,7 @@ static void print_codeinline(struct bkd_ostream * out, struct bkd_linenode * t) 
             print_line(out, t->tree.node + i);
         }
     } else {
-        print_html_utf8(out, t->tree.leaf);
+        print_html_utf8(out, t->tree.leaf, 1);
     }
     if (t->markup & BKD_CODEINLINE) bkd_puts(out, "</code>");
 }
@@ -67,7 +79,7 @@ static void print_codeinline(struct bkd_ostream * out, struct bkd_linenode * t) 
 static void print_image(struct bkd_ostream * out, struct bkd_linenode * t) {
     if (t->markup & BKD_IMAGE) {
         bkd_puts(out, "<img src=\"");
-        print_html_utf8(out, t->data);
+        print_html_utf8(out, t->data, 0);
         bkd_puts(out, "\"></img>");
     } else {
         return print_codeinline(out, t);
@@ -82,7 +94,7 @@ static void print_math(struct bkd_ostream * out, struct bkd_linenode * t) {
 static void print_link(struct bkd_ostream * out, struct bkd_linenode * t) {
     if (t->markup & BKD_LINK) {
         bkd_puts(out, "<a href=\"");
-        print_html_utf8(out, t->data);
+        print_html_utf8(out, t->data, 1);
         bkd_puts(out, "\">");
         print_math(out, t);
         bkd_puts(out, "</a>");
@@ -168,12 +180,14 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
         case BKD_CODEBLOCK:
             if (node->data.codeblock.language.length > 0) {
                 bkd_puts(out, "<pre><code data-bkd-language=\"");
-                bkd_putn(out, node->data.codeblock.language);
+                print_html_utf8(out, node->data.codeblock.language, 0);
+                /* bkd_putn(out, node->data.codeblock.language); */
                 bkd_puts(out, "\">");
             } else {
                 bkd_puts(out, "<pre><code>");
             }
-            bkd_putn(out, node->data.codeblock.text);
+            print_html_utf8(out, node->data.datastring, 0);
+            /* bkd_putn(out, node->data.codeblock.text); */
             bkd_puts(out, "</code></pre>");
             break;
         case BKD_COMMENTBLOCK:
@@ -189,7 +203,7 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
             break;
         case BKD_DATASTRING:
             bkd_puts(out, "<div hidden class=\"bkd-datastring\">");
-            bkd_putn(out, node->data.datastring);
+            print_html_utf8(out, node->data.datastring, 0);
             bkd_puts(out, "</div>");
             break;
         case BKD_TEXT:

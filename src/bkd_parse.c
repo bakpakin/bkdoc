@@ -24,8 +24,12 @@ struct bkd_string bkd_strescape_new(struct bkd_string string) {
     while (inNext < string.length) {
         inNext += bkd_utf8_readlen(string.data + inNext, &codepoint, string.length - inNext);
         if (codepoint == '\\') {
-            if (inNext >= string.length) break; /* Ignore hanging escapes */
-            switch (string.data[inNext]) {
+            if (inNext >= string.length) { /* Terminating escapes signify a new line. */
+                ret.data[retNext++] = '\n';
+                break;
+            }
+            inNext += bkd_utf8_readlen(string.data + inNext, &codepoint, string.length - inNext);
+            switch (codepoint) {
                 case 'n':
                     ret.data[retNext++] = '\n';
                     break;
@@ -42,6 +46,7 @@ struct bkd_string bkd_strescape_new(struct bkd_string string) {
                     retNext += bkd_utf8_write(ret.data + retNext, accumulator);
                     break;
                 default:
+                    retNext += bkd_utf8_write(ret.data + retNext, codepoint);
                     break;
             }
         } else {

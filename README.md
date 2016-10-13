@@ -117,16 +117,16 @@ print("Go Lua! " .. (goLua(1, 2) + goLua(3, 4)))
 There are a number of features I would like to add. Some are easy and will
 definitely be added soon, others are more difficult and maybe added later.
 
-[  ] Block comments (easy)
-[  ] Inline tables, like with Github markdown
-[  ] More list styles, like roman numerals, or maybe eventually with pattern matching.
-[  ] More verbose syntax for tables to allow complex cells.
-[  ] Internal linking and reference system. Preferably more general than that of Markdown.
-[  ] Code language marker (easy)
-[  ] Metadata - custom tags on lists and other block elements.
-[  ] Math expressions, likely in conjuction or based on MathML (hard)
-[  ] Inline diagram syntax - UML and or generic boxes, lines, and text diagrams from
+- [  ] Block comments (easy)
+- [  ] Inline tables, like with Github markdown
+- [  ] More list styles, like roman numerals, or maybe eventually with pattern matching.
+- [  ] More verbose syntax for tables to allow complex cells.
+- [  ] Internal linking and reference system. Preferably more general than that of Markdown.
+- [  ] Code language marker (easy)
+- [  ] Metadata - custom tags on lists and other block elements.
+- [  ] Math expressions, likely in conjuction or based on MathML (hard)
+- [  ] Inline diagram syntax - UML and or generic boxes, lines, and text diagrams from
      ASCII. NOT a conversion of ASCII art to images (hard)
-[  ] Text macros / variables - especially useful for repeated math expressions.
-[  ] More output formats besides HTML - We just have to render the syntax tree to
+- [  ] Text macros / variables - especially useful for repeated math expressions.
+- [  ] More output formats besides HTML - We just have to render the syntax tree to
      a new format.

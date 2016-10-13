@@ -25,17 +25,15 @@
  * Denotes the type of a block level element.
  */
 #define BKD_PARAGRAPH 0
-#define BKD_OLIST 1
-#define BKD_ULIST 2
-#define BKD_TABLE 3
-#define BKD_HEADER 4
-#define BKD_HORIZONTALRULE 5
-#define BKD_CODEBLOCK 6
-#define BKD_COMMENTBLOCK 7
-#define BKD_TEXT 8
-#define BKD_DATASTRING 9
-#define BKD_DOCUMENT 10
-#define BKD_COUNT_TYPE 11
+#define BKD_TABLE 1
+#define BKD_HEADER 2
+#define BKD_HORIZONTALRULE 3
+#define BKD_CODEBLOCK 4
+#define BKD_COMMENTBLOCK 5
+#define BKD_TEXT 6
+#define BKD_DATASTRING 7
+#define BKD_LIST 8
+#define BKD_COUNT_TYPE 9
 
 /*
  * Denotes the type of a "markup". A "markup" is a transformation
@@ -53,6 +51,15 @@
 #define BKD_MATH 32
 #define BKD_IMAGE 64
 #define BKD_CODEINLINE 128
+
+/* Different styles for sub documents, or lists. */
+#define BKD_LISTSTYLE_NONE 0
+#define BKD_LISTSTYLE_NUMBERED 1
+#define BKD_LISTSTYLE_BULLETS 2
+#define BKD_LISTSTYLE_ALPHA 3
+#define BKD_LISTSTYLE_ALPHALOWER 4
+#define BKD_LISTSTYLE_ROMAN 5
+#define BKD_LISTSTYLE_PATTERN 6
 
 /*
  * Style
@@ -87,16 +94,6 @@ struct bkd_paragraph {
     struct bkd_linenode text;
 };
 
-struct bkd_olist {
-    uint32_t itemCount;
-    struct bkd_node * items;
-};
-
-struct bkd_ulist {
-    uint32_t itemCount;
-    struct bkd_node * items;
-};
-
 struct bkd_table {
     uint32_t rows;
     uint32_t cols;
@@ -121,7 +118,8 @@ struct bkd_commentblock {
     struct bkd_linenode text;
 };
 
-struct bkd_document {
+struct bkd_list {
+    uint32_t style;
     uint32_t itemCount;
     struct bkd_node * items;
 };
@@ -131,15 +129,13 @@ struct bkd_node {
     union {
         struct bkd_linenode text;
         struct bkd_paragraph paragraph;
-        struct bkd_olist olist;
-        struct bkd_ulist ulist;
         struct bkd_table table;
         struct bkd_header header;
         struct bkd_linebreak linebreak;
         struct bkd_codeblock codeblock;
         struct bkd_commentblock commentblock;
         struct bkd_string datastring;
-        struct bkd_document subdoc;
+        struct bkd_list list;
     } data;
 };
 
@@ -191,7 +187,6 @@ extern struct bkd_ostreamdef * BKD_STRING_OSTREAMDEF;
 /* Standard IO Streams */
 #ifndef BKD_NO_STDIO
 #include <stdio.h>
-#define SPIT(S) do { bkd_putn(BKD_STDOUT, (S)); bkd_putc(BKD_STDOUT, '\n'); } while (0)
 extern struct bkd_istreamdef * BKD_FILE_ISTREAMDEF;
 extern struct bkd_istream * BKD_STDIN;
 extern struct bkd_ostreamdef * BKD_FILE_OSTREAMDEF;
@@ -224,8 +219,8 @@ extern const char * bkd_errors[];
 #define BKD_ERROR_UNKNOWN 5
 
 /* Main Functions */
-struct bkd_document * bkd_parse(struct bkd_istream * in);
-void bkd_docfree(struct bkd_document * document);
+struct bkd_list * bkd_parse(struct bkd_istream * in);
+void bkd_docfree(struct bkd_list * document);
 
 struct bkd_linenode * bkd_parse_line(struct bkd_linenode * node, struct bkd_string string);
 

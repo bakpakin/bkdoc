@@ -113,6 +113,7 @@ struct bkd_ostream * BKD_STDOUT = &_bkd_stdout;
 
 /* stdio input stream */
 
+/* Switch to buffered reads with fread */
 static int file_getl(struct bkd_istream * in) {
     FILE * file = (FILE *) in->user;
     int c;

@@ -24,10 +24,8 @@ struct bkd_string bkd_strescape_new(struct bkd_string string) {
     while (inNext < string.length) {
         inNext += bkd_utf8_readlen(string.data + inNext, &codepoint, string.length - inNext);
         if (codepoint == '\\') {
-            if (inNext >= string.length) { /* Terminating escapes signify a new line. */
-                ret.data[retNext++] = '\n';
+            if (inNext >= string.length) /* Terminating escapes are ignored. */
                 break;
-            }
             inNext += bkd_utf8_readlen(string.data + inNext, &codepoint, string.length - inNext);
             switch (codepoint) {
                 case 'n':
@@ -36,7 +34,7 @@ struct bkd_string bkd_strescape_new(struct bkd_string string) {
                 case 't':
                     ret.data[retNext++] = '\t';
                     break;
-                case '(': /* Unicode character */
+                case '(': /* Unicode escape */
                     accumulator = 0;
                     while (inNext < string.length) {
                         inNext += bkd_utf8_readlen(string.data + inNext, &codepoint, string.length - inNext);
@@ -205,16 +203,19 @@ struct bkd_linenode * bkd_parse_line(struct bkd_linenode * l, struct bkd_string 
 }
 
 enum ps {
-    PS_DOCUMENT,
+    PS_SUBDOC,
+    PS_COLLAPSIBLE_SUBDOC,
     PS_HEADER,
     PS_PARAGRAPH,
     PS_RULE,
-    PS_CODEBLOCK
+    PS_CODEBLOCK,
+    PS_LISTITEM,
+    PS_LIST
 };
 
 struct parse_frame {
     enum ps ps;
-    int32_t indent;
+    uint32_t indent;
     struct bkd_node node;
     struct bkd_node * children;
     struct bkd_buffer buffer;
@@ -234,18 +235,24 @@ static void parse_pushstate(struct bkd_parsestate * state, uint32_t indent, enum
     top.children = NULL;
     top.indent = indent;
     top.ps = ps;
-    top.node.type = BKD_DOCUMENT;
-    top.node.data.subdoc.itemCount = 0;
-    top.node.data.subdoc.items = NULL;
+    top.node.type = BKD_LIST;
+    top.node.data.list.itemCount = 0;
+    top.node.data.list.items = NULL;
+    top.node.data.list.style = BKD_LISTSTYLE_NONE;
     top.useruint = 0;
     top.userflags = 0;
     bkd_sbpush(state->stack, top);
 }
 
-static void parse_popstate(struct bkd_parsestate * state) {
+static int parse_popstate(struct bkd_parsestate * state) {
     struct parse_frame * frame = bkd_sblastp(state->stack);
     struct bkd_node n = frame->node;
     switch (frame->ps) {
+        case PS_LISTITEM:
+            n.type = BKD_TEXT;
+            bkd_parse_line(&n.data.text, frame->buffer.string);
+            bkd_buffree(frame->buffer);
+            break;
         case PS_CODEBLOCK:
             n.type = BKD_CODEBLOCK;
             n.data.codeblock.text = bkd_str_new(frame->buffer.string);
@@ -256,10 +263,25 @@ static void parse_popstate(struct bkd_parsestate * state) {
             n.type = BKD_HORIZONTALRULE;
             bkd_buffree(frame->buffer);
             break;
-        case PS_DOCUMENT:
-            n.type = BKD_DOCUMENT;
-            n.data.subdoc.itemCount = bkd_sbcount(frame->children);
-            n.data.subdoc.items = bkd_sbflatten(frame->children);
+        case PS_LIST:
+        case PS_SUBDOC:
+            n.type = BKD_LIST;
+            n.data.list.itemCount = bkd_sbcount(frame->children);
+            n.data.list.items = bkd_sbflatten(frame->children);
+            bkd_buffree(frame->buffer);
+            break;
+        case PS_COLLAPSIBLE_SUBDOC:
+            if (bkd_sbcount(frame->children) == 1) { /* If we only have one child, use that child instead */
+                n = frame->children[0];
+                bkd_sbfree(frame->children);
+                if (n.type == BKD_PARAGRAPH)
+                    n.type = BKD_TEXT;
+            } else {
+                n.type = BKD_LIST;
+                n.data.list.itemCount = bkd_sbcount(frame->children);
+                n.data.list.items = bkd_sbflatten(frame->children);
+            }
+            bkd_buffree(frame->buffer);
             break;
         case PS_PARAGRAPH:
             n.type = BKD_PARAGRAPH;
@@ -273,26 +295,50 @@ static void parse_popstate(struct bkd_parsestate * state) {
     if (bkd_sbcount(state->stack) > 1) {
         struct parse_frame * newtop = bkd_sblastp(state->stack) - 1;
         bkd_sbpush(newtop->children, n);
+        bkd_sbpop(state->stack);
+        return 1;
     } else { /* Otherwise, we are the root frame. */
-        BKD_ERROR(BKD_ERROR_UNKNOWN);
+        bkd_sblast(state->stack).node = n;
+        return 0;
     }
-    bkd_sbpop(state->stack);
+}
+
+static inline int is_list(struct bkd_string trimmed, uint32_t listtype) {
+    uint8_t leaderChar;
+    if (trimmed.length <= 2 || trimmed.data[1] != ' ') return 0;
+    switch (listtype) {
+        case BKD_LISTSTYLE_NUMBERED: leaderChar = '%'; break;
+        case BKD_LISTSTYLE_BULLETS: leaderChar = '*'; break;
+        default: leaderChar = '*'; break;
+    }
+    return trimmed.data[0] == leaderChar;
+}
+
+static inline uint32_t get_list_type(struct bkd_string trimmed) {
+    if (is_list(trimmed, BKD_LISTSTYLE_NUMBERED)) return BKD_LISTSTYLE_NUMBERED;
+    if (is_list(trimmed, BKD_LISTSTYLE_BULLETS)) return BKD_LISTSTYLE_BULLETS;
+    return 0;
 }
 
 /* Dispatch a single line to the parser. Returns if the line was consumed. If so,
  * the dispatch will be next with the next line. If not, the dispath will be called
  * again with the same line (but hopefully different state) */
 static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line) {
-    int32_t indent = bkd_strindent(line);
+    uint32_t indent = bkd_strindent(line);
     struct parse_frame * frame = bkd_sblastp(state->stack);
     struct bkd_string trimmed;
     struct bkd_string stripped;
     int isEmpty = bkd_strempty(line);
     switch (frame->ps) {
-        case PS_DOCUMENT:
+        case PS_SUBDOC:
+        case PS_COLLAPSIBLE_SUBDOC:
             if (isEmpty) return 1;
             if (indent < frame->indent) {
                 parse_popstate(state);
+                return 0;
+            }
+            if (indent > frame->indent) {
+                parse_pushstate(state, indent, PS_SUBDOC);
                 return 0;
             }
             /* Here is where we detect what kind of block comes next. */
@@ -306,9 +352,33 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
             } else if (trimmed.length >= 2 && trimmed.data[0] == '>' && trimmed.data[1] == '>') {
                 parse_pushstate(state, indent, PS_CODEBLOCK);
             } else {
-                parse_pushstate(state, indent, PS_PARAGRAPH);
+                uint32_t listtype = get_list_type(trimmed);
+                if (listtype) {
+                    parse_pushstate(state, indent, PS_LIST);
+                    bkd_sblast(state->stack).node.data.list.style = listtype;
+                } else {
+                    parse_pushstate(state, indent, PS_PARAGRAPH);
+                }
             }
             return 0;
+        case PS_LIST:
+            if (isEmpty) return 1;
+            if (indent > frame->indent) {
+                parse_pushstate(state, indent, PS_SUBDOC);
+                return 0;
+            } else if (indent < frame->indent) {
+                parse_popstate(state);
+                return 0;
+            } else if (is_list(bkd_strtrim_front(line), frame->node.data.list.style)) {
+                parse_pushstate(state, indent + 2, PS_COLLAPSIBLE_SUBDOC);
+                parse_pushstate(state, indent + 2, PS_LISTITEM);
+                frame = bkd_sblastp(state->stack);
+                frame->buffer = bkd_bufpush(frame->buffer, bkd_strsub(bkd_strtrim_front(line), 2, -1));
+                return 1;
+            } else {
+                parse_popstate(state);
+                return 0;
+            }
         case PS_CODEBLOCK:
             stripped = bkd_strstripn_new(line, indent < frame->indent ? indent : frame->indent);
             if (frame->useruint == 0) { /* First line */
@@ -343,9 +413,14 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
             parse_popstate(state);
             return 1;
         case PS_PARAGRAPH:
+        case PS_LISTITEM:
             if (isEmpty || indent < frame->indent) {
                 parse_popstate(state);
                 return isEmpty; /* Consume empty lines but not lines belonging to lower states. */
+            } else if (indent > frame->indent) {
+                parse_popstate(state);
+                parse_pushstate(state, indent, PS_SUBDOC);
+                return 0;
             }
             if (frame->buffer.string.length > 0)
                 frame->buffer = bkd_bufpushc(frame->buffer, ' ');
@@ -368,25 +443,23 @@ static inline void parse_main(struct bkd_parsestate * state) {
 }
 
 /* Parse a BKDoc input stream and create an AST. */
-struct bkd_document * bkd_parse(struct bkd_istream * in) {
+struct bkd_list * bkd_parse(struct bkd_istream * in) {
 
     struct bkd_parsestate state;
     state.in = in;
     state.stack = NULL;
 
-    /* Set indent of the root state to -1 so that nothing is ever adjacent */
-    parse_pushstate(&state, -1, PS_DOCUMENT);
+    parse_pushstate(&state, 0, PS_SUBDOC);
     parse_main(&state);
 
     /* Resolve internal links and anchors */
 
     /* Set up document */
-    while (bkd_sbcount(state.stack) > 1)
-        parse_popstate(&state);
-    struct bkd_document * document = BKD_MALLOC(sizeof(struct bkd_document));
-    document->itemCount = bkd_sbcount(state.stack[0].children);
-    document->items = bkd_sbflatten(state.stack[0].children);
-    bkd_buffree(state.stack[0].buffer);
+    while (parse_popstate(&state))
+        ;
+
+    struct bkd_list * document = BKD_MALLOC(sizeof(struct bkd_list));
+    *document = state.stack[0].node.data.list;
     bkd_sbfree(state.stack);
     return document;
 }
@@ -411,26 +484,19 @@ static void cleanup_node(struct bkd_node * node) {
         case BKD_PARAGRAPH:
             cleanup_linenode(&node->data.paragraph.text);
             break;
-        case BKD_OLIST:
-            max = node->data.olist.itemCount;
+        case BKD_LIST:
+            max = node->data.list.itemCount;
             for (i = 0; i < max; i++) {
-                cleanup_node(node->data.olist.items + i);
+                cleanup_node(node->data.list.items + i);
             }
-            BKD_FREE(&node->data.olist.items);
-            break;
-        case BKD_ULIST:
-            max = node->data.ulist.itemCount;
-            for (i = 0; i < max; i++) {
-                cleanup_node(node->data.ulist.items + i);
-            }
-            BKD_FREE(&node->data.ulist.items);
+            BKD_FREE(node->data.list.items);
             break;
         case BKD_TABLE:
             max = node->data.table.cols * node->data.table.rows;
             for (i = 0; i < max; i++) {
                 cleanup_node(node->data.table.items + i);
             }
-            BKD_FREE(&node->data.table.items);
+            BKD_FREE(node->data.table.items);
             break;
         case BKD_HEADER:
             cleanup_linenode(&node->data.header.text);
@@ -454,7 +520,7 @@ static void cleanup_node(struct bkd_node * node) {
     }
 }
 
-void bkd_docfree(struct bkd_document * document) {
+void bkd_docfree(struct bkd_list * document) {
     for (uint32_t i = 0; i < document->itemCount; i++) {
         cleanup_node(document->items + i);
     }

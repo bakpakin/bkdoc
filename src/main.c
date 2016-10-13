@@ -24,7 +24,7 @@ int main () {
     struct bkd_istream in = bkd_file_istream(fi);
     struct bkd_ostream out = bkd_file_ostream(fo);
 
-    struct bkd_document * doc = bkd_parse(&in);
+    struct bkd_list * doc = bkd_parse(&in);
     bkd_html(&out, doc);
     bkd_html(BKD_STDOUT, doc);
     bkd_docfree(doc);

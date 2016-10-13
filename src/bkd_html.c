@@ -127,25 +127,42 @@ static void print_line(struct bkd_ostream * out, struct bkd_linenode * t) {
     if (t->markup & BKD_BOLD) bkd_puts(out, "</strong>");
 }
 
-static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, struct bkd_node * parent) {
+static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node) {
     uint32_t headerSize;
+    uint32_t listWrap = 1;
     switch (node->type) {
         case BKD_PARAGRAPH:
             bkd_puts(out, "<p>");
             print_line(out, &node->data.paragraph.text);
             bkd_puts(out, "</p>");
             break;
-        case BKD_OLIST:
-            bkd_puts(out, "<ol>");
-            for (uint32_t i = 0; i < node->data.olist.itemCount; i++)
-                print_node(out, node->data.olist.items + i, node);
-            bkd_puts(out, "</ol>");
-            break;
-        case BKD_ULIST:
-            bkd_puts(out, "<ul>");
-            for (uint32_t i = 0; i < node->data.ulist.itemCount; i++)
-                print_node(out, node->data.ulist.items + i, node);
-            bkd_puts(out, "</ul>");
+        case BKD_LIST:
+            switch(node->data.list.style) {
+                case BKD_LISTSTYLE_NONE: bkd_puts(out, "<div class=\"bkd-subdoc\">"); listWrap = 0; break;
+                case BKD_LISTSTYLE_NUMBERED: bkd_puts(out, "<ol>"); break;
+                case BKD_LISTSTYLE_BULLETS: bkd_puts(out, "<ul>"); break;
+                case BKD_LISTSTYLE_ROMAN: bkd_puts(out, "<ol>"); break;
+                default:
+                    break;
+            }
+            if (listWrap) {
+                for (uint32_t i = 0; i < node->data.list.itemCount; i++) {
+                    bkd_puts(out, "<li>");
+                    print_node(out, node->data.list.items + i);
+                    bkd_puts(out, "</li>");
+                }
+            } else {
+                for (uint32_t i = 0; i < node->data.list.itemCount; i++)
+                    print_node(out, node->data.list.items + i);
+            }
+            switch(node->data.list.style) {
+                case BKD_LISTSTYLE_NONE: bkd_puts(out, "</div>"); break;
+                case BKD_LISTSTYLE_NUMBERED: bkd_puts(out, "</ol>"); break;
+                case BKD_LISTSTYLE_BULLETS: bkd_puts(out, "</ul>"); break;
+                case BKD_LISTSTYLE_ROMAN: bkd_puts(out, "</ol>"); break;
+                default:
+                    break;
+            }
             break;
         case BKD_TABLE:
             /* TODO */
@@ -172,9 +189,9 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
             break;
         case BKD_HORIZONTALRULE:
             if (node->data.linebreak.style == BKD_DOTTED) {
-                bkd_puts(out, "<hr class=\"bkd_dotted\">");
+                bkd_puts(out, "<hr class=\"bkd-dotted\">");
             } else {
-                bkd_puts(out, "<hr class=\"bkd_solid\">");
+                bkd_puts(out, "<hr class=\"bkd-solid\">");
             }
             break;
         case BKD_CODEBLOCK:
@@ -195,25 +212,13 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
             print_line(out, &node->data.commentblock.text);
             bkd_puts(out, "</blockquote>");
             break;
-        case BKD_DOCUMENT:
-            bkd_puts(out, "<div class=\"bkd-subdoc\">");
-            for (uint32_t i = 0; i < node->data.subdoc.itemCount; i++)
-                print_node(out, node->data.subdoc.items + i, node);
-            bkd_puts(out, "</div>");
-            break;
         case BKD_DATASTRING:
             bkd_puts(out, "<div hidden class=\"bkd-datastring\">");
             print_html_utf8(out, node->data.datastring, 0);
             bkd_puts(out, "</div>");
             break;
         case BKD_TEXT:
-            if (parent && (parent->type == BKD_OLIST || parent->type == BKD_ULIST)) {
-                bkd_puts(out, "<li>");
-                print_line(out, &node->data.text);
-                bkd_puts(out, "</li>");
-            } else {
-                print_line(out, &node->data.text);
-            }
+            print_line(out, &node->data.text);
             break;
         default:
             return BKD_ERROR_UNKNOWN_NODE;
@@ -222,14 +227,14 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node, stru
 }
 
 int32_t bkd_html_fragment(struct bkd_ostream * out, struct bkd_node * node) {
-    return print_node(out, node, NULL);
+    return print_node(out, node);
 }
 
-int32_t bkd_html(struct bkd_ostream * out, struct bkd_document * document) {
+int32_t bkd_html(struct bkd_ostream * out, struct bkd_list * document) {
     int32_t error;
     bkd_puts(out, "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head><body>");
     for (uint32_t i = 0; i < document->itemCount; i++) {
-        if ((error = print_node(out, document->items + i, NULL))) {
+        if ((error = print_node(out, document->items + i))) {
             BKD_ERROR(error);
             return error;
         }

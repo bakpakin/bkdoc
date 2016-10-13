@@ -3,7 +3,7 @@
 
 #include "bkd.h"
 
-int bkd_html(struct bkd_ostream * out, struct bkd_document * document);
+int bkd_html(struct bkd_ostream * out, struct bkd_list * document);
 
 int bkd_html_fragment(struct bkd_ostream * out, struct bkd_node * node);
 

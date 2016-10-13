@@ -21,6 +21,10 @@ struct bkd_string bkd_strescape_new(struct bkd_string string) {
     uint32_t retNext = 0;
     uint32_t codepoint, accumulator;
     ret.data = BKD_MALLOC(string.length);
+    if (!ret.data) {
+        BKD_ERROR(BKD_ERROR_OUT_OF_MEMORY);
+        return BKD_NULLSTR;
+    }
     while (inNext < string.length) {
         inNext += bkd_utf8_readlen(string.data + inNext, &codepoint, string.length - inNext);
         if (codepoint == '\\') {
@@ -94,6 +98,10 @@ static inline struct bkd_linenode * add_node(struct bkd_linenode ** nodes, uint3
     if (*count == *capacity) {
         *capacity = 2 * (*count) + 1;
         *nodes = BKD_REALLOC(*nodes, *capacity * sizeof(struct bkd_linenode));
+        if (!*nodes) {
+            BKD_ERROR(BKD_ERROR_OUT_OF_MEMORY);
+            return NULL;
+        }
     }
 	struct bkd_linenode * child = *nodes + *count;
     *count = *count + 1;
@@ -138,9 +146,15 @@ static struct bkd_string bkd_parse_line_impl(struct bkd_linenode * l, struct bkd
     struct bkd_linenode * child;
     uint32_t capacity = 3;
     struct bkd_linenode * nodes = BKD_MALLOC(sizeof(struct bkd_linenode) * capacity);
-    uint32_t count = 0;
+    uint32_t count = 0, index = 0;
+
+    if (!nodes) {
+        BKD_ERROR(BKD_ERROR_OUT_OF_MEMORY);
+        return BKD_NULLSTR;
+    }
+
     while (current.length) {
-        uint32_t index = 0;
+        index = 0;
         if (root)
             codepoint = find_one(current, opener, 1, &index);
         else

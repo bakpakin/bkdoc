@@ -16,21 +16,14 @@ void handler(int sig) {
     exit(sig);
 }
 
-int main () {
+int main(int argc, char *argv[])
+{
     signal(SIGSEGV, handler);
 
-    FILE * fi = fopen("test.bkd", "r");
-    FILE * fo = fopen("test.html", "w");
-    struct bkd_istream in = bkd_file_istream(fi);
-    struct bkd_ostream out = bkd_file_ostream(fo);
-
-    struct bkd_list * doc = bkd_parse(&in);
-    bkd_html(&out, doc);
+    struct bkd_list * doc = bkd_parse(BKD_STDIN);
     bkd_html(BKD_STDOUT, doc);
     bkd_docfree(doc);
 
-    bkd_istream_freebuf(&in);
-    fclose(fi);
-    fclose(fo);
-
+    bkd_istream_freebuf(BKD_STDIN);
+    return 0;
 }

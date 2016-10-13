@@ -46,7 +46,7 @@ Build with CMake.
 
 ```bash
 git clone https://github.com/bakpakin/bkdoc.git
-cd BKDoc
+cd bkdoc
 mkdir build && cd build
 cmake ..
 make

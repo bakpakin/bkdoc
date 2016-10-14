@@ -119,14 +119,14 @@ static struct bkd_string parse_flags(struct bkd_string string, uint32_t * flags)
         uint32_t codepoint = 0;
         uint32_t csize = bkd_utf8_readlen(string.data + index, &codepoint, string.length - index);
         switch (codepoint) {
-            case 'B': case '*': *flags |= BKD_BOLD; break;
-            case 'U': case '_': *flags |= BKD_UNDERLINE; break;
-            case 'I': case '/': *flags |= BKD_ITALICS; break;
-            case 'S': case '-': *flags |= BKD_STRIKETHROUGH; break;
-            case 'M': case '$': *flags |= BKD_MATH; break;
-            case 'C': case '#': *flags |= BKD_CODEINLINE; break;
-            case 'L': case '!': *flags |= BKD_LINK; break;
-            case 'P': case '@': *flags |= BKD_IMAGE; break;
+            case 'B': *flags |= BKD_BOLD; break;
+            case 'U': *flags |= BKD_UNDERLINE; break;
+            case 'I': *flags |= BKD_ITALICS; break;
+            case 'S': *flags |= BKD_STRIKETHROUGH; break;
+            case 'M': *flags |= BKD_MATH; break;
+            case 'C': *flags |= BKD_CODEINLINE; break;
+            case 'L': *flags |= BKD_LINK; break;
+            case 'P': *flags |= BKD_IMAGE; break;
             case ':':
                 string = bkd_strsub(string, index + 1, -1);
                 done = 1; break;
@@ -224,7 +224,8 @@ enum ps {
     PS_RULE,
     PS_CODEBLOCK,
     PS_LISTITEM,
-    PS_LIST
+    PS_LIST,
+    PS_BLOCKCOMMENT
 };
 
 struct parse_frame {
@@ -265,6 +266,11 @@ static int parse_popstate(struct bkd_parsestate * state) {
         case PS_LISTITEM:
             n.type = BKD_TEXT;
             bkd_parse_line(&n.data.text, frame->buffer.string);
+            bkd_buffree(frame->buffer);
+            break;
+        case PS_BLOCKCOMMENT:
+            n.type = BKD_COMMENTBLOCK;
+            bkd_parse_line(&n.data.commentblock.text, frame->buffer.string);
             bkd_buffree(frame->buffer);
             break;
         case PS_CODEBLOCK:
@@ -365,6 +371,8 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
                 parse_pushstate(state, indent, PS_RULE);
             } else if (trimmed.length >= 2 && trimmed.data[0] == '>' && trimmed.data[1] == '>') {
                 parse_pushstate(state, indent, PS_CODEBLOCK);
+            } else if (trimmed.length >= 2 && trimmed.data[0] == '>') {
+                parse_pushstate(state, indent, PS_BLOCKCOMMENT);
             } else {
                 uint32_t listtype = get_list_type(trimmed);
                 if (listtype) {
@@ -384,8 +392,9 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
                 parse_popstate(state);
                 return 0;
             } else if (is_list(bkd_strtrim_front(line), frame->node.data.list.style)) {
-                parse_pushstate(state, indent + 2, PS_COLLAPSIBLE_SUBDOC);
-                parse_pushstate(state, indent + 2, PS_LISTITEM);
+                indent += 1 + bkd_strindent(bkd_strsub(bkd_strtrim_front(line), 1, -1));
+                parse_pushstate(state, indent, PS_COLLAPSIBLE_SUBDOC);
+                parse_pushstate(state, indent, PS_LISTITEM);
                 frame = bkd_sblastp(state->stack);
                 frame->buffer = bkd_bufpush(frame->buffer, bkd_strsub(bkd_strtrim_front(line), 2, -1));
                 return 1;
@@ -441,6 +450,21 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
             stripped = bkd_strstripn_new(line, frame->indent);
             frame->buffer = bkd_bufpush(frame->buffer, stripped);
             bkd_strfree(stripped);
+            return 1;
+        case PS_BLOCKCOMMENT:
+            if (isEmpty || indent < frame->indent) {
+                parse_popstate(state);
+                return isEmpty; /* Consume empty lines but not lines belonging to lower states. */
+            }
+            trimmed = bkd_strtrim_front(line);
+            if (trimmed.data[0] != '>') {
+                parse_popstate(state);
+                return 0;
+            }
+            trimmed = bkd_strtrim_front(bkd_strsub(trimmed, 1, -1));
+            if (frame->buffer.string.length > 0)
+                frame->buffer = bkd_bufpushc(frame->buffer, ' ');
+            frame->buffer = bkd_bufpush(frame->buffer, trimmed);
             return 1;
     }
     return 1;

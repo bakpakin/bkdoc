@@ -112,12 +112,17 @@ end
 print("Go Lua! " .. (goLua(1, 2) + goLua(3, 4)))
 >>>>
 
+> Email style comment blocks
+> are currently the same as markdown.\n
+> Other metadata may be needed eventually, such
+> as the person quoted, etc.
+
 ```
 
 There are a number of features I would like to add. Some are easy and will
 definitely be added soon, others are more difficult and maybe added later.
 
-- [ ] Block comments (easy)
+- [X] Block comments (easy)
 - [ ] Inline tables, like with Github markdown
 - [ ] More list styles, like roman numerals, or maybe eventually with pattern matching.
 - [ ] More verbose syntax for tables to allow complex cells.

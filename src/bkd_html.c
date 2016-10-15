@@ -198,13 +198,11 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node) {
             if (node->data.codeblock.language.length > 0) {
                 bkd_puts(out, "<pre><code data-bkd-language=\"");
                 print_html_utf8(out, node->data.codeblock.language, 0);
-                /* bkd_putn(out, node->data.codeblock.language); */
                 bkd_puts(out, "\">");
             } else {
                 bkd_puts(out, "<pre><code>");
             }
             print_html_utf8(out, node->data.datastring, 0);
-            /* bkd_putn(out, node->data.codeblock.text); */
             bkd_puts(out, "</code></pre>");
             break;
         case BKD_COMMENTBLOCK:

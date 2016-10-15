@@ -15,11 +15,51 @@ static inline uint8_t readHex(uint32_t codepoint) {
     return 0;
 }
 
+/* Reads and returns an escape sequence in a string */
+static inline uint32_t read_escape(struct bkd_string string, uint32_t * escapeLength) {
+    uint32_t codepoint, accumulator, length;
+    bkd_utf8_readlen(string.data, &codepoint, string.length);
+    switch (codepoint) {
+        case 'b':
+            *escapeLength = 1;
+            return '\b';
+        case 'f':
+            *escapeLength = 1;
+            return '\f';
+        case 'v':
+            *escapeLength = 1;
+            return '\v';
+        case 'r':
+            *escapeLength = 1;
+            return '\r';
+        case 'n':
+            *escapeLength = 1;
+            return '\n';
+        case 't':
+            *escapeLength = 1;
+            return '\t';
+        case '(': /* Unicode escape */
+            accumulator = 0;
+            length = 1;
+            while (length < string.length) {
+                length += bkd_utf8_readlen(string.data + length, &codepoint, string.length - length);
+                if (codepoint == ')') break;
+                accumulator = 16 * accumulator + readHex(codepoint);
+            }
+            *escapeLength = length;
+            return accumulator;
+        default:
+            *escapeLength = bkd_utf8_sizep(codepoint);
+            return codepoint;
+    }
+}
+
 struct bkd_string bkd_strescape_new(struct bkd_string string) {
     struct bkd_string ret;
     uint32_t inNext = 0;
     uint32_t retNext = 0;
-    uint32_t codepoint, accumulator;
+    uint32_t escapeLength = 0;
+    uint32_t codepoint;
     ret.data = BKD_MALLOC(string.length);
     if (!ret.data) {
         BKD_ERROR(BKD_ERROR_OUT_OF_MEMORY);
@@ -30,30 +70,10 @@ struct bkd_string bkd_strescape_new(struct bkd_string string) {
         if (codepoint == '\\') {
             if (inNext >= string.length) /* Terminating escapes are ignored. */
                 break;
-            inNext += bkd_utf8_readlen(string.data + inNext, &codepoint, string.length - inNext);
-            switch (codepoint) {
-                case 'n':
-                    ret.data[retNext++] = '\n';
-                    break;
-                case 't':
-                    ret.data[retNext++] = '\t';
-                    break;
-                case '(': /* Unicode escape */
-                    accumulator = 0;
-                    while (inNext < string.length) {
-                        inNext += bkd_utf8_readlen(string.data + inNext, &codepoint, string.length - inNext);
-                        if (codepoint == ')') break;
-                        accumulator = 16 * accumulator + readHex(codepoint);
-                    }
-                    retNext += bkd_utf8_write(ret.data + retNext, accumulator);
-                    break;
-                default:
-                    retNext += bkd_utf8_write(ret.data + retNext, codepoint);
-                    break;
-            }
-        } else {
-            retNext += bkd_utf8_write(ret.data + retNext, codepoint);
+            codepoint = read_escape(bkd_strsub(string, inNext, -1), &escapeLength);
+            inNext += escapeLength;
         }
+        retNext += bkd_utf8_write(ret.data + retNext, codepoint);
     }
     ret.data = BKD_REALLOC(ret.data, retNext);
     ret.length = retNext;
@@ -65,17 +85,11 @@ static uint32_t find_one(struct bkd_string string, const uint32_t * codepoints, 
     uint32_t testpoint = 0;
     uint32_t charsize;
     uint32_t i;
-    int foundPipe;
-    uint32_t pipeIndex = 0;
     while (pos < string.length) {
         charsize = bkd_utf8_readlen(string.data + pos, &testpoint, string.length - pos);
         if (testpoint == '\\') {
-            foundPipe = bkd_strfind(bkd_strsub(string, pos + 1, -1), '\\', &pipeIndex);
-            if (foundPipe) {
-                pos += pipeIndex + 2;
-            } else {
-                pos++;
-            }
+            pos += charsize;
+            read_escape(bkd_strsub(string, pos, -1), &charsize);
         } else {
             for (i = 0; i < count; i++) {
                 if (testpoint == codepoints[i]) {
@@ -83,8 +97,8 @@ static uint32_t find_one(struct bkd_string string, const uint32_t * codepoints, 
                     return testpoint;
                 }
             }
-            pos += charsize;
         }
+        pos += charsize;
     }
     return 0;
 }

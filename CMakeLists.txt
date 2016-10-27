@@ -23,3 +23,6 @@ include_directories("include")
 include_directories("cli")
 
 add_executable(bkd ${SOURCES})
+
+install(TARGETS bkd
+        RUNTIME DESTINATION bin)

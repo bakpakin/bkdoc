@@ -19,13 +19,35 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef BKD_HTML_
-#define BKD_HTML_
+#ifndef BKD_HASH_H_6CU79XSU
+#define BKD_HASH_H_6CU79XSU
 
 #include "bkd.h"
 
-int bkd_html(struct bkd_ostream * out, struct bkd_list * document);
+struct bkd_hashbucket {
+    uint8_t activated: 1;
+    uint8_t ownsKey: 1;
+    uint8_t ownsValue: 1;
+    struct bkd_string key;
+    struct bkd_string value;
+    struct bkd_hashbucket *next;
+};
 
-int bkd_html_fragment(struct bkd_ostream * out, struct bkd_node * node);
+struct bkd_hashtable {
+    uint32_t count;
+    uint32_t capacity;
+    uint32_t hashMask;
+    struct bkd_hashbucket * buckets;
+};
 
-#endif /* end of include guard: BKD_HTML_ */
+int bkd_hashinit(struct bkd_hashtable *, uint8_t capacityPower);
+
+void bkd_hashfree(struct bkd_hashtable *);
+
+struct bkd_hashbucket * bkd_hashgetb(struct bkd_hashtable *, struct bkd_string key);
+
+int bkd_hashget(struct bkd_hashtable * htable, struct bkd_string key, struct bkd_string * out);
+
+int bkd_hashput(struct bkd_hashtable *, struct bkd_string key, struct bkd_string value);
+
+#endif /* end of include guard: BKD_HASH_H_6CU79XSU */

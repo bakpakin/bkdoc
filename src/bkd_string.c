@@ -1,3 +1,24 @@
+/*
+Copyright (c) 2016 Calvin Rose
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+
 #include "bkd.h"
 #include "bkd_utf8.h"
 #include "bkd_string.h"
@@ -108,6 +129,17 @@ uint32_t bkd_strindent(struct bkd_string string) {
     return indent;
 }
 
+int bkd_strequal(struct bkd_string str1, struct bkd_string str2) {
+    uint8_t * c1, * c2, * c1end;;
+    if (str1.length != str2.length) return 0;
+    if (str1.data == str2.data) return 1;
+    for (c1 = str1.data, c2 = str2.data, c1end = c1 + str1.length; c1 < c1end; c1++, c2++) {
+        if (*c1 != *c2)
+            return 0;
+    }
+    return 1;
+}
+
 int bkd_strempty(struct bkd_string string) {
     uint32_t pos = 0;
     uint32_t codepoint = 0;
@@ -118,6 +150,15 @@ int bkd_strempty(struct bkd_string string) {
         }
     }
     return 1;
+}
+
+uint32_t bkd_strhash(struct bkd_string string) {
+    uint8_t * data = string.data;
+    uint32_t hash = 5381;
+    uint32_t c;
+    while ((c = *data++))
+        hash = 33 * hash + c;
+    return hash;
 }
 
 struct bkd_string bkd_strstripn_new(struct bkd_string string, uint32_t n) {

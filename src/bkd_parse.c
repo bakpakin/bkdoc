@@ -1,3 +1,24 @@
+/*
+Copyright (c) 2016 Calvin Rose
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+
 #include "bkd.h"
 #include "bkd_utf8.h"
 #include "bkd_string.h"
@@ -60,6 +81,7 @@ struct bkd_string bkd_strescape_new(struct bkd_string string) {
     uint32_t retNext = 0;
     uint32_t escapeLength = 0;
     uint32_t codepoint;
+    if (string.length == 0) return BKD_NULLSTR;
     ret.data = BKD_MALLOC(string.length);
     if (!ret.data) {
         BKD_ERROR(BKD_ERROR_OUT_OF_MEMORY);
@@ -419,8 +441,10 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
         case PS_CODEBLOCK:
             stripped = bkd_strstripn_new(line, indent < frame->indent ? indent : frame->indent);
             if (frame->useruint == 0) { /* First line */
-                frame->useruint = stripped.length - bkd_strtrimc_front(stripped, '>').length;
-                /* TODO: get language */
+                trimmed = bkd_strtrimc_front(stripped, '>');
+                frame->useruint = stripped.length - trimmed.length;
+                trimmed = bkd_strtrim_both(trimmed);
+                frame->node.data.codeblock.language = bkd_strescape_new(trimmed);
             } else if (stripped.length - bkd_strtrimc_front(stripped, '>').length == frame->useruint) { /* Last line */
                 parse_popstate(state);
             } else {
@@ -459,11 +483,12 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
                 parse_pushstate(state, indent, PS_SUBDOC);
                 return 0;
             }
-            if (frame->buffer.string.length > 0)
+            if (frame->userflags)
                 frame->buffer = bkd_bufpushc(frame->buffer, ' ');
             stripped = bkd_strstripn_new(line, frame->indent);
             frame->buffer = bkd_bufpush(frame->buffer, stripped);
             bkd_strfree(stripped);
+            frame->userflags |= 1;
             return 1;
         case PS_BLOCKCOMMENT:
             if (isEmpty || indent < frame->indent) {
@@ -476,8 +501,9 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
                 return 0;
             }
             trimmed = bkd_strtrim_front(bkd_strsub(trimmed, 1, -1));
-            if (frame->buffer.string.length > 0)
-                frame->buffer = bkd_bufpushc(frame->buffer, ' ');
+            if (frame->userflags)
+                frame->buffer = bkd_bufpushc(frame->buffer, '\n');
+            frame->userflags |= 1;
             frame->buffer = bkd_bufpush(frame->buffer, trimmed);
             return 1;
     }

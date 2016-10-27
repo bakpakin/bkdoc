@@ -163,6 +163,8 @@ static struct bkd_string parse_flags(struct bkd_string string, uint32_t * flags)
             case 'C': *flags |= BKD_CODEINLINE; break;
             case 'L': *flags |= BKD_LINK; break;
             case 'P': *flags |= BKD_IMAGE; break;
+            case '^': *flags |= BKD_SUPERSCRIPT; break;
+            case '_': *flags |= BKD_SUBSCRIPT; break;
             case ':':
                 string = bkd_strsub(string, index + 1, -1);
                 done = 1; break;

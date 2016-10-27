@@ -76,7 +76,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define BKD_LINK 16
 #define BKD_MATH 32
 #define BKD_IMAGE 64
-#define BKD_CODEINLINE 128
+#define BKD_SUBSCRIPT 128
+#define BKD_SUPERSCRIPT 256
+#define BKD_CODEINLINE 512
 
 /* Different styles for sub documents, or lists. */
 #define BKD_LISTSTYLE_NONE 0

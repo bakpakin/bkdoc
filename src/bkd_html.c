@@ -130,9 +130,21 @@ static void print_underline(struct bkd_ostream * out, struct bkd_linenode * t) {
     if (t->markup & BKD_UNDERLINE) bkd_puts(out, "</u>");
 }
 
+static void print_superscript(struct bkd_ostream * out, struct bkd_linenode * t) {
+    if (t->markup & BKD_SUPERSCRIPT) bkd_puts(out, "<sup>");
+    print_underline(out, t);
+    if (t->markup & BKD_SUPERSCRIPT) bkd_puts(out, "</sup>");
+}
+
+static void print_subscript(struct bkd_ostream * out, struct bkd_linenode * t) {
+    if (t->markup & BKD_SUBSCRIPT) bkd_puts(out, "<sub>");
+    print_superscript(out, t);
+    if (t->markup & BKD_SUBSCRIPT) bkd_puts(out, "</sub>");
+}
+
 static void print_strikethrough(struct bkd_ostream * out, struct bkd_linenode * t) {
     if (t->markup & BKD_STRIKETHROUGH) bkd_puts(out, "<del>");
-    print_underline(out, t);
+    print_subscript(out, t);
     if (t->markup & BKD_STRIKETHROUGH) bkd_puts(out, "</del>");
 }
 

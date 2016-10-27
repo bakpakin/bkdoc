@@ -32,7 +32,7 @@ it has a number of annoying problems that are inherent in its design.
 
 As BKDoc currently stands, I'm still using Pandoc for notes. For example, BKDoc right now has similar features
 to vanilla markdown and conspicuously lacks math, diagrams, and out formats other than HTML. But it is still a fast simple tool
-for your markup needs.
+for your markup needs. I'm not sure if formal Latex like math will ever make it into bkdoc.
 
 ## How it works
 
@@ -95,8 +95,8 @@ BKDoc expects UTF-8 input. You can embed Unicode emojis and CJK
 characters directly into your markup, or use ASCII escapes for
 unicode. For example, \(263A) is a unicode smily face.
 
-BKDoc is also 100% HTML safe, unlike Markdown. You cannot embed HTML into
-a document and have it rendered.
+<div>BKDoc is also 100% HTML safe, unlike Markdown. You cannot embed HTML into
+a document and have it rendered.</div>
 
 Next is a line break.
 

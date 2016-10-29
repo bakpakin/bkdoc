@@ -154,10 +154,46 @@ static void print_italics(struct bkd_ostream * out, struct bkd_linenode * t) {
     if (t->markup & BKD_ITALICS) bkd_puts(out, "</em>");
 }
 
-static void print_line(struct bkd_ostream * out, struct bkd_linenode * t) {
+static void print_bold(struct bkd_ostream * out, struct bkd_linenode * t) {
     if (t->markup & BKD_BOLD) bkd_puts(out, "<strong>");
     print_italics(out, t);
     if (t->markup & BKD_BOLD) bkd_puts(out, "</strong>");
+}
+
+static void print_internallink(struct bkd_ostream * out, struct bkd_linenode * t) {
+    if ((t->markup & BKD_INTERNALLINK) && t->data.length > 0) {
+        bkd_puts(out, "<a href=\"#");
+        print_html_utf8(out, t->data, 0);
+        bkd_puts(out, "\">");
+        print_bold(out, t);
+        bkd_puts(out, "</a>");
+    } else {
+        print_bold(out, t);
+    }
+}
+
+static void print_anchor(struct bkd_ostream * out, struct bkd_linenode * t) {
+    if ((t->markup & BKD_ANCHOR) && t->data.length > 0) {
+        bkd_puts(out, "<a id=\"");
+        print_html_utf8(out, t->data, 0);
+        bkd_puts(out, "\">");
+        print_internallink(out, t);
+        bkd_puts(out, "</a>");
+    } else {
+        print_internallink(out, t);
+    }
+}
+
+static void print_line(struct bkd_ostream * out, struct bkd_linenode * t) {
+    if ((t->markup & BKD_CUSTOM) && t->data.length > 0) {
+        bkd_puts(out, "<span class=\"bkd-custom-");
+        print_html_utf8(out, t->data, 0);
+        bkd_puts(out, "\">");
+        print_anchor(out, t);
+        bkd_puts(out, "</span>");
+    } else {
+        print_anchor(out, t);
+    }
 }
 
 static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node) {

@@ -157,6 +157,7 @@ static struct bkd_string parse_flags(struct bkd_string string, uint32_t * flags)
         uint32_t codepoint = 0;
         uint32_t csize = bkd_utf8_readlen(string.data + index, &codepoint, string.length - index);
         switch (codepoint) {
+            case 'A': *flags |= BKD_ANCHOR; break;
             case 'B': *flags |= BKD_BOLD; break;
             case 'U': *flags |= BKD_UNDERLINE; break;
             case 'I': *flags |= BKD_ITALICS; break;
@@ -165,9 +166,12 @@ static struct bkd_string parse_flags(struct bkd_string string, uint32_t * flags)
             case 'C': *flags |= BKD_CODEINLINE; break;
             case 'L': *flags |= BKD_LINK; break;
             case 'P': *flags |= BKD_IMAGE; break;
+            case '*': *flags |= BKD_CUSTOM; break;
             case '^': *flags |= BKD_SUPERSCRIPT; break;
             case '_': *flags |= BKD_SUBSCRIPT; break;
+            case '#': *flags |= BKD_INTERNALLINK; break;
             case ':':
+                if (*flags == 0) *flags |= BKD_CUSTOM;
                 string = bkd_strsub(string, index + 1, -1);
                 done = 1; break;
             default:

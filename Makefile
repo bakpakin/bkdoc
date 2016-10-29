@@ -3,6 +3,7 @@
 
 CFLAGS=-std=c99 -Wall -Wextra -O4 -s -I include -I src -I cli
 TARGET=bkd
+PREFIX=/usr/local
 
 SOURCES=src/bkd_utf8.c src/bkd_hash.c src/bkd_string.c src/bkd_html.c src/bkd_parse.c src/bkd_util.c cli/main.c
 OBJECTS=$(patsubst %.c,%.o,$(SOURCES))
@@ -15,8 +16,11 @@ $(TARGET): $(OBJECTS)
 %.o : %.c
 	$(CC) $(CFLAGS) -o $@ -c $<
 
+install: $(TARGET)
+	cp $(TARGET) $(PREFIX)/bin
+
 clean:
 	rm $(TARGET) || true
 	rm $(OBJECTS) || true
 
-.PHONY: clean
+.PHONY: clean install

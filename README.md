@@ -3,32 +3,59 @@
 Better, simpler markup language for prose, notes, documentation, and more.
 
 BKDoc is both a markup language and a commandline tool for rendering that
-markup language to other document formats. That means that you write a
-document in BKDoc format, and then can generate webpages, pdfs, and other
-document formats.
+markup language to other document formats (currently just HTML).
 
 BKDoc is written in C 99 for super portability and (eventually) speed. The
 parser aims to be safe, fast, and small.
 
+## Install
+
+Clone the repository, make, and make install. You can also build and install with the
+CMake based build. Installation is by default in /usr/local/bin.
+
+### Make
+```bash
+git clone https://github.com/bakpakin/bkdoc.git
+cd bkdoc
+make && make install
+```
+
+### CMake
+```bash
+git clone https://github.com/bakpakin/bkdoc.git
+cd bkdoc
+mkdir build && cd build
+cmake ..
+make && make install
+```
+
+This creates a binary `./bkd`, which reads from stdin and converts the BKDoc markup into HTML,
+which is sent to stdout. You can parse a file like so (from your build directory)
+
+```bash
+./bkd < in.bkd > out.html
+```
+
+This syntax will probably change as options are added and the command line tool is made more robust.
+
 ## Why
 
 I needed a fast markup language that I could use to generate beautiful documents
-in a number of different formats. I have been using Pandoc with Makrdown for this task, but
+in a number of different formats. I have been using Pandoc + Markdown for this task, but
 it has a number of annoying problems that are inherent in its design.
 
-* **It's slow** - not really slow, but generating PDFs takes too long. Compilation often
-  fails and I have to recompile again.
-* **It's bloated** - Again, the core of pandoc isn't huge, but since it has a lot of functionality
-  it is bigger than I would want. Also, the LaTeX requirement for PDFs is a real annoyance.
-* **The HTML output isn't standalone** - The html files that pandoc outputs can't really be standalone
-  with embedded math.
-* **Different out formats display differently** - By this, I mean that certain LaTex math features may work
-  in HTML pages bu not in PDFs.
-* **Embedded Latex Syntax** - Having to switch between Markdown syntax, LaTeX syntax, and HTML escapes is
-  a no go for me.
 * **Markdown is missing features** - Markdown is easy to read and write, but It is missing a number of useful
   features that I like when I take notes or write documentation, such as inline diagrams, graphs, alphabetical lists,
   and more.
+* **It's slow** - not really slow, but generating PDFs and even HTML takes too long. Compilation often
+  fails and I have to recompile again.
+* **It's bloated** - Again, the core of pandoc isn't huge, but since it has a lot of functionality
+  it is bigger than I would want, which is to write Markdown and output documents.
+  Also, the LaTeX requirement for PDFs is a real annoyance.
+* **The HTML output isn't standalone** - The html files that pandoc outputs can't really be standalone
+  with embedded math.
+* **Different out formats display differently** - By this, I mean that certain LaTex math features may work
+  in HTML pages but not in PDFs. This is annoying, but expected considering the scope of pandoc.
 
 As BKDoc currently stands, I'm still using Pandoc for notes. For example, BKDoc right now has similar features
 to vanilla markdown and conspicuously lacks math, diagrams, and out formats other than HTML. But it is still a fast simple tool
@@ -39,27 +66,6 @@ for your markup needs. I'm not sure if formal Latex like math will ever make it 
 The parser first parses your markup and converts it into a syntax tree, represented by
 the structures in `include/bkd.h'. The program then outputs the tree to HTML. To add new
 formats, we just need to convert the syntax tree to the output format.
-
-## Build and Run
-
-Build with CMake.
-
-```bash
-git clone https://github.com/bakpakin/bkdoc.git
-cd bkdoc
-mkdir build && cd build
-cmake ..
-make
-```
-
-This creates a binary `./bkd`, which reads from stdin and converts the BKDoc markup into HTML,
-which is sent to stdout. You can parse a file like so (from your build directory)
-
-```bash
-./bkd < in.bkd > out.html
-```
-There is nothing inherent in BKDoc that requires a complex build system, but CMake is nice and cross platform.
-BKDoc has no dependencies besides the standard library (which is also eventually going to be optional).
 
 ## Syntax
 
@@ -107,15 +113,12 @@ Next is a line break.
 
 ---------------------------------
 
-Code can also be surrounded in blocks. A block begins with at least 2 '>' characters
-and ends with the same sequence.
+Anchors and internal links are similar to HTML.
+[A:This is an anchor](anchor-1)
 
->>>>
-local function goLua(a, b)
-    return a + b * (a - b)
-end
-print("Go Lua! " .. (goLua(1, 2) + goLua(3, 4)))
->>>>
+[#:This is an internal link](anchor-1)
+
+Code block syntax with 3 back ticks is the same as markdown.
 
 > Email style comment blocks
 > are currently the same as markdown.\n

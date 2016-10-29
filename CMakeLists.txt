@@ -14,6 +14,7 @@ src/bkd_html.c
 src/bkd_util.c
 src/bkd_utf8.c
 src/bkd_string.c
+src/bkd_hash.c
 )
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g -rdynamic -Wall -Wextra")

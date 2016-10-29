@@ -172,9 +172,10 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node) {
         case BKD_LIST:
             switch(node->data.list.style) {
                 case BKD_LISTSTYLE_NONE: bkd_puts(out, "<div class=\"bkd-subdoc\">"); listWrap = 0; break;
-                case BKD_LISTSTYLE_NUMBERED: bkd_puts(out, "<ol>"); break;
-                case BKD_LISTSTYLE_BULLETS: bkd_puts(out, "<ul>"); break;
-                case BKD_LISTSTYLE_ROMAN: bkd_puts(out, "<ol>"); break;
+                case BKD_LISTSTYLE_NUMBERED: bkd_puts(out, "<ol type=\"1\" class=\"bkd-list-numbered\">"); break;
+                case BKD_LISTSTYLE_BULLETS: bkd_puts(out, "<ul class=\"bkd-list-bullets\">"); break;
+                case BKD_LISTSTYLE_ROMAN: bkd_puts(out, "<ol type=\"I\" class=\"bkd-list-roman\">"); break;
+                case BKD_LISTSTYLE_ALPHA: bkd_puts(out, "<ol type=\"A\" class=\"bkd-list-alpha\">"); break;
                 default:
                     break;
             }
@@ -193,6 +194,7 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node) {
                 case BKD_LISTSTYLE_NUMBERED: bkd_puts(out, "</ol>"); break;
                 case BKD_LISTSTYLE_BULLETS: bkd_puts(out, "</ul>"); break;
                 case BKD_LISTSTYLE_ROMAN: bkd_puts(out, "</ol>"); break;
+                case BKD_LISTSTYLE_ALPHA: bkd_puts(out, "</ol>"); break;
                 default:
                     break;
             }

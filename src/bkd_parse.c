@@ -23,6 +23,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "bkd_utf8.h"
 #include "bkd_string.h"
 #include "bkd_stretchy.h"
+#include "bkd_hash.h"
 
 #include <string.h>
 
@@ -39,6 +40,7 @@ static inline uint8_t readHex(uint32_t codepoint) {
 /* Reads and returns an escape sequence in a string */
 static inline uint32_t read_escape(struct bkd_string string, uint32_t * escapeLength) {
     uint32_t codepoint, accumulator, length;
+    if (string.length == 0) return '\n';
     bkd_utf8_readlen(string.data, &codepoint, string.length);
     switch (codepoint) {
         case 'b':
@@ -266,6 +268,8 @@ enum ps {
     PS_BLOCKCOMMENT
 };
 
+/* A chunk of parse state that goes onto a stack. This helps
+ * represent the tree structure of the document without explicit recursion. */
 struct parse_frame {
     enum ps ps;
     uint32_t indent;
@@ -282,6 +286,7 @@ struct bkd_parsestate {
     struct parse_frame * stack;
 };
 
+/* Add a new parse frame to the parsing stack. Sets the frame to sensible defaults. */
 static void parse_pushstate(struct bkd_parsestate * state, uint32_t indent, enum ps ps) {
     struct parse_frame top;
     top.buffer = bkd_bufnew(80);
@@ -297,6 +302,9 @@ static void parse_pushstate(struct bkd_parsestate * state, uint32_t indent, enum
     bkd_sbpush(state->stack, top);
 }
 
+/* Pops the topmost parse frame off of the stack, and finalizes any data associated
+ * with the frame, such as setting up children and freeing buffers. This should handle
+ * all different types of node that can be in the parse frame. */
 static int parse_popstate(struct bkd_parsestate * state) {
     struct parse_frame * frame = bkd_sblastp(state->stack);
     struct bkd_node n = frame->node;
@@ -363,18 +371,26 @@ static int parse_popstate(struct bkd_parsestate * state) {
 
 static inline int is_list(struct bkd_string trimmed, uint32_t listtype) {
     uint8_t leaderChar;
-    if (trimmed.length <= 2 || trimmed.data[1] != ' ') return 0;
+    uint32_t codepoint = 0;
+    if (trimmed.length < 1) return 0;
     switch (listtype) {
         case BKD_LISTSTYLE_NUMBERED: leaderChar = '%'; break;
         case BKD_LISTSTYLE_BULLETS: leaderChar = '*'; break;
+        case BKD_LISTSTYLE_ROMAN: leaderChar = '-'; break;
+        case BKD_LISTSTYLE_ALPHA: leaderChar = '@'; break;
         default: leaderChar = '*'; break;
     }
-    return trimmed.data[0] == leaderChar;
+    if (trimmed.data[0] != leaderChar) return 0;
+    if (trimmed.length == 1) return 1;
+    bkd_utf8_readlen(trimmed.data + 1, &codepoint, trimmed.length - 1);
+    return bkd_utf8_whitespace(codepoint);
 }
 
 static inline uint32_t get_list_type(struct bkd_string trimmed) {
     if (is_list(trimmed, BKD_LISTSTYLE_NUMBERED)) return BKD_LISTSTYLE_NUMBERED;
     if (is_list(trimmed, BKD_LISTSTYLE_BULLETS)) return BKD_LISTSTYLE_BULLETS;
+    if (is_list(trimmed, BKD_LISTSTYLE_ROMAN)) return BKD_LISTSTYLE_ROMAN;
+    if (is_list(trimmed, BKD_LISTSTYLE_ALPHA)) return BKD_LISTSTYLE_ALPHA;
     return 0;
 }
 
@@ -388,6 +404,7 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
     struct bkd_string stripped;
     int isEmpty = bkd_strempty(line);
     switch (frame->ps) {
+
         case PS_SUBDOC:
         case PS_COLLAPSIBLE_SUBDOC:
             if (isEmpty) return 1;
@@ -405,9 +422,9 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
                 parse_pushstate(state, indent, PS_HEADER);
             } else if (bkd_strempty(bkd_strtrimc_front(trimmed, '-')) ||
                        bkd_strempty(bkd_strtrimc_front(trimmed, '=')) ||
-                       bkd_strempty(bkd_strtrimc_front(trimmed, '`'))) {
+                       bkd_strempty(bkd_strtrimc_front(trimmed, '.'))) {
                 parse_pushstate(state, indent, PS_RULE);
-            } else if (trimmed.length >= 2 && trimmed.data[0] == '>' && trimmed.data[1] == '>') {
+            } else if (trimmed.length >= 3 && trimmed.data[0] == '`' && trimmed.data[1] == '`' && trimmed.data[2] == '`') {
                 parse_pushstate(state, indent, PS_CODEBLOCK);
             } else if (trimmed.length >= 2 && trimmed.data[0] == '>') {
                 parse_pushstate(state, indent, PS_BLOCKCOMMENT);
@@ -421,6 +438,7 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
                 }
             }
             return 0;
+
         case PS_LIST:
             if (isEmpty) return 1;
             if (indent > frame->indent) {
@@ -435,19 +453,21 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
                 parse_pushstate(state, indent, PS_LISTITEM);
                 frame = bkd_sblastp(state->stack);
                 frame->buffer = bkd_bufpush(frame->buffer, bkd_strsub(bkd_strtrim_front(line), 2, -1));
+                frame->userflags |= 1;
                 return 1;
             } else {
                 parse_popstate(state);
                 return 0;
             }
+
         case PS_CODEBLOCK:
             stripped = bkd_strstripn_new(line, indent < frame->indent ? indent : frame->indent);
             if (frame->useruint == 0) { /* First line */
-                trimmed = bkd_strtrimc_front(stripped, '>');
+                trimmed = bkd_strtrimc_front(stripped, '`');
                 frame->useruint = stripped.length - trimmed.length;
                 trimmed = bkd_strtrim_both(trimmed);
                 frame->node.data.codeblock.language = bkd_strescape_new(trimmed);
-            } else if (stripped.length - bkd_strtrimc_front(stripped, '>').length == frame->useruint) { /* Last line */
+            } else if (stripped.length - bkd_strtrimc_front(stripped, '`').length == frame->useruint) { /* Last line */
                 parse_popstate(state);
             } else {
                 if (frame->userflags & 1) {
@@ -459,6 +479,7 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
             }
             bkd_strfree(stripped);
             return 1;
+
         case PS_RULE:
             switch (line.data[0]) {
                 case '-': frame->node.data.linebreak.style = BKD_SOLID; break;
@@ -467,6 +488,7 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
             }
             parse_popstate(state);
             return 1;
+
         case PS_HEADER:
             trimmed = bkd_strtrimc_front(line, '#');
             uint32_t headerSize = line.length - trimmed.length;
@@ -475,6 +497,7 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
             bkd_parse_line(&frame->node.data.header.text, bkd_strtrim_both(trimmed));
             parse_popstate(state);
             return 1;
+
         case PS_PARAGRAPH:
         case PS_LISTITEM:
             if (isEmpty || indent < frame->indent) {
@@ -492,6 +515,7 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
             bkd_strfree(stripped);
             frame->userflags |= 1;
             return 1;
+
         case PS_BLOCKCOMMENT:
             if (isEmpty || indent < frame->indent) {
                 parse_popstate(state);

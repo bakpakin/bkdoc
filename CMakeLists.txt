@@ -17,7 +17,7 @@ src/bkd_string.c
 src/bkd_hash.c
 )
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g -rdynamic -Wall -Wextra")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g -Wall -Wextra")
 
 include_directories("src")
 include_directories("include")

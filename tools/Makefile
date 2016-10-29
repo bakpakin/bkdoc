@@ -3,10 +3,10 @@
 # well for things like notes. It relies on the bkd executable being in your path.
 
 INPUTS := $(wildcard ./**/*.bkd)
-OUTPUTS := $(patsubst ./%.bkd,./output/%.html,$(INPUTS))
+OUTPUTS := $(patsubst ./%.bkd,./%.html,$(INPUTS))
 
 all: $(OUTPUTS)
 
-./output/%.html : ./%.bkd
+./%.html : ./%.bkd
 	@echo "Building $@"
 	bkd < $< > $@

@@ -131,10 +131,10 @@ definitely be added soon, others are more difficult and maybe added later.
 - [ ] Inline tables, like with Github markdown
 - [X] More list styles, like roman numerals, or maybe eventually with pattern matching.
 - [ ] More verbose syntax for tables to allow complex cells.
-- [ ] Internal linking and reference system. Preferably more general than that of Markdown.
+- [X] Internal linking and reference system. Preferably more general than that of Markdown.
 - [X] Code language marker (easy)
 - [ ] Metadata - custom tags on lists and other block elements.
 - [ ] Math expressions, likely in conjuction or based on MathML (hard)
 - [ ] Inline diagram syntax - UML and or generic boxes, lines, and text diagrams fromASCII. NOT a conversion of ASCII art to images (hard)
-- [ ] Text macros / variables - especially useful for repeated math expressions.
+- [ ] Text macros / variables - especially useful for repeated math expressions, as well as separating links from their paths.
 - [ ] More output formats besides HTML - We just have to render the syntax tree to a new format.

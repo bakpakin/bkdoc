@@ -369,29 +369,28 @@ static int parse_popstate(struct bkd_parsestate * state) {
     }
 }
 
-static inline int is_list(struct bkd_string trimmed, uint32_t listtype) {
-    uint8_t leaderChar;
-    uint32_t codepoint = 0;
-    if (trimmed.length < 1) return 0;
-    switch (listtype) {
-        case BKD_LISTSTYLE_NUMBERED: leaderChar = '%'; break;
-        case BKD_LISTSTYLE_BULLETS: leaderChar = '*'; break;
-        case BKD_LISTSTYLE_ROMAN: leaderChar = '-'; break;
-        case BKD_LISTSTYLE_ALPHA: leaderChar = '@'; break;
-        default: leaderChar = '*'; break;
-    }
-    if (trimmed.data[0] != leaderChar) return 0;
-    if (trimmed.length == 1) return 1;
-    bkd_utf8_readlen(trimmed.data + 1, &codepoint, trimmed.length - 1);
-    return bkd_utf8_whitespace(codepoint);
-}
-
+/*
+ * Return the list type of a line, or 0 if it is not the beginning of a list
+ * element. Looks at only the first two characters, and expects that
+ * the first character is a list delimiter. That character should either be
+ * the end of the line or be followed by whitespace.
+ */
 static inline uint32_t get_list_type(struct bkd_string trimmed) {
-    if (is_list(trimmed, BKD_LISTSTYLE_NUMBERED)) return BKD_LISTSTYLE_NUMBERED;
-    if (is_list(trimmed, BKD_LISTSTYLE_BULLETS)) return BKD_LISTSTYLE_BULLETS;
-    if (is_list(trimmed, BKD_LISTSTYLE_ROMAN)) return BKD_LISTSTYLE_ROMAN;
-    if (is_list(trimmed, BKD_LISTSTYLE_ALPHA)) return BKD_LISTSTYLE_ALPHA;
-    return 0;
+    uint32_t listType, codepoint;
+    if (trimmed.length == 0) return 0;
+    switch (trimmed.data[0]) {
+        case '%': listType = BKD_LISTSTYLE_NUMBERED;   break;
+        case '*': listType = BKD_LISTSTYLE_BULLETS;    break;
+        case '-': listType = BKD_LISTSTYLE_ROMAN;      break;
+        case '@': listType = BKD_LISTSTYLE_ALPHA;      break;
+        case '&': listType = BKD_LISTSTYLE_ALPHALOWER; break;
+        case '+': listType = BKD_LISTSTYLE_ROMANLOWER; break;
+        default: return 0;
+    }
+    if (trimmed.length == 1) return listType;
+    codepoint = 0;
+    bkd_utf8_readlen(trimmed.data + 1, &codepoint, trimmed.length - 1);
+    return bkd_utf8_whitespace(codepoint) ? listType : 0;
 }
 
 /* Dispatch a single line to the parser. Returns if the line was consumed. If so,
@@ -447,7 +446,7 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
             } else if (indent < frame->indent) {
                 parse_popstate(state);
                 return 0;
-            } else if (is_list(bkd_strtrim_front(line), frame->node.data.list.style)) {
+            } else if (get_list_type(bkd_strtrim_front(line)) == frame->node.data.list.style) {
                 indent += 1 + bkd_strindent(bkd_strsub(bkd_strtrim_front(line), 1, -1));
                 parse_pushstate(state, indent, PS_COLLAPSIBLE_SUBDOC);
                 parse_pushstate(state, indent, PS_LISTITEM);

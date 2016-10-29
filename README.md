@@ -85,6 +85,11 @@ This is on a new line.
   % This is a nested, numbered list.
   % The numbers are generated for you, you cannot manually set the numbers.
 
++ There are 6 list types. This is lowercase roman numerals.
++ A @ is an upper-case lettered list, and a & is a lowercase lettered list.
++ Uppercase roman numerals is _.
+
+
 You can also markup chunks of text. [B:This is bold], [I:this is italicized],
 and [BI:this is bold and italicized]. You can [B: nest [I: these]].
 
@@ -124,10 +129,10 @@ definitely be added soon, others are more difficult and maybe added later.
 
 - [X] Block comments (easy)
 - [ ] Inline tables, like with Github markdown
-- [ ] More list styles, like roman numerals, or maybe eventually with pattern matching.
+- [X] More list styles, like roman numerals, or maybe eventually with pattern matching.
 - [ ] More verbose syntax for tables to allow complex cells.
 - [ ] Internal linking and reference system. Preferably more general than that of Markdown.
-- [ ] Code language marker (easy)
+- [X] Code language marker (easy)
 - [ ] Metadata - custom tags on lists and other block elements.
 - [ ] Math expressions, likely in conjuction or based on MathML (hard)
 - [ ] Inline diagram syntax - UML and or generic boxes, lines, and text diagrams fromASCII. NOT a conversion of ASCII art to images (hard)

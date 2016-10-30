@@ -38,6 +38,7 @@ flags = [
     'c',
     '-I/home/calvin/code/bkdoc/include',
     '-I/home/calvin/code/bkdoc/src',
+    '-I/home/calvin/code/bkdoc/cli',
     '-std=gnu99',
 ]
 

@@ -31,15 +31,56 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <stdio.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <string.h>
 
 void handler(int sig) {
     fprintf(stderr, "Signal Error: %d\n", sig);
     exit(sig);
 }
 
-int main(int argc, char *argv[])
-{
+#define OPT_HELP 1
+#define OPT_VERSION 2
+
+int get_option(char o) {
+    switch (o) {
+        case 'h': return OPT_HELP;
+        case 'v': return OPT_VERSION;
+        default: return 0;
+    }
+}
+
+int main(int argc, char *argv[]) {
+    int64_t currentArg = 1;
+    uint64_t options = 0;
     signal(SIGSEGV, handler);
+
+    /* Get options */
+    for (currentArg = 1; currentArg < argc; currentArg++) {
+        char * arg = argv[currentArg];
+        size_t len = strlen(arg);
+        /* text option */
+        if (arg[0] == '-') {
+            for (size_t i = 1; i < len; i++)
+                options |= get_option(arg[i]);
+        } else {
+
+        }
+    }
+
+    /* Show version and exit */
+    if (options & OPT_VERSION) {
+        printf("BKDoc v0.0 Copyright 2016 Calvin Rose.\n");
+        return 0;
+    }
+
+    /* Show help text and exit */
+    if (options & OPT_HELP) {
+        printf("BKDoc v0.0 Copyright 2016 Calvin Rose.\n");
+        printf("%s [options] < filein.bkd > fileout.bkd\n", argv[0]);
+        printf("\t-h : Shows this help text.\n");
+        printf("\t-v : Shows the version and copyright information.\n");
+        return 0;
+    }
 
     struct bkd_list * doc = bkd_parse(BKD_STDIN);
     bkd_html(BKD_STDOUT, doc);

@@ -308,6 +308,6 @@ int32_t bkd_html(struct bkd_ostream * out, struct bkd_list * document) {
             return error;
         }
     }
-    bkd_puts(out, "</body></html>");
+    bkd_puts(out, "</body></html>\n");
     return 0;
 }

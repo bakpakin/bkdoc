@@ -31,22 +31,24 @@ clean:
 	rm $(OBJECTS) || true
 	rm $(FIXTURES_TEMP) || true
 
-# Generate test fixtures. Only run to update the tests.
 %.html : %.bkd $(TARGET)
-	@echo "WARNING: Generating fixture $@..."
-	@./$(TARGET) < $< > $@
+	./$(TARGET) < $< > $@
 
 # Generate things to test
 %.html.unit : %.bkd $(TARGET)
 	@./$(TARGET) < $< > $@
 
 # Run test on fixture
-%.target : %.html %.html.unit
+%.target : %.html.unit
 	@echo "Testing $<..."
-	@diff $^
+	@diff $< $(patsubst %.html.unit,%.html,$<)
 
+# Generate test fixtures. Only run to update the tests.
+# If there is a bug in the output, this will overwrite
+# the coorect output with the incorrect output. Don't use
+# this very often.
 fixtures: $(FIXTURES)
 
-test: $(FIXTURES_TARGET)
+test: $(FIXTURES_TEMP) $(FIXTURES_TARGET)
 
 .PHONY: clean install test fixtures

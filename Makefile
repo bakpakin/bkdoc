@@ -12,7 +12,7 @@ OBJECTS=$(patsubst %.c,%.o,$(SOURCES))
 # Test fixtures
 FIXTURES_SOURCE=$(wildcard tests/fixtures/*.bkd)
 FIXTURES=$(patsubst %.bkd,%.html,$(FIXTURES_SOURCE))
-FIXTURES_TEMP=$(patsubst %.bkd,%.html.unit,$(FIXTURES_SOURCE))
+FIXTURES_TEMP=$(patsubst %.bkd,%.html.tmp,$(FIXTURES_SOURCE))
 FIXTURES_TARGET=$(patsubst %.bkd,%.target,$(FIXTURES_SOURCE))
 
 all: $(TARGET)
@@ -35,13 +35,13 @@ clean:
 	./$(TARGET) < $< > $@
 
 # Generate things to test
-%.html.unit : %.bkd $(TARGET)
+%.html.tmp : %.bkd $(TARGET)
 	@./$(TARGET) < $< > $@
 
 # Run test on fixture
-%.target : %.html.unit
+%.target : %.html.tmp
 	@echo "Testing $<..."
-	@diff $< $(patsubst %.html.unit,%.html,$<)
+	@diff $< $(patsubst %.html.tmp,%.html,$<)
 
 # Generate test fixtures. Only run to update the tests.
 # If there is a bug in the output, this will overwrite

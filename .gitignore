@@ -5,6 +5,9 @@
 # Ignore binary
 bkd
 
+# Ignore testing files
+*.tmp
+
 # Created by https://www.gitignore.io/api/c
 
 ### C ###

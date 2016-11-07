@@ -568,6 +568,8 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
                 const uint32_t pipe = '|';
                 if (find_one(trimmed, &pipe, 1, &nextPipe)) {
                     struct bkd_string section = bkd_strsub(trimmed, 0, nextPipe - 1);
+                    /* TODO - not escape trailing whitespace in escape - e.g. \_space_ */
+                    section = bkd_strtrim_both(section);
                     struct bkd_node child;
                     child.type = BKD_TEXT;
                     bkd_parse_line(&child.data.text, section);
@@ -577,7 +579,8 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
                     if (bkd_strempty(trimmed)) break;
                     struct bkd_node child;
                     child.type = BKD_TEXT;
-                    bkd_parse_line(&child.data.text, trimmed);
+                    /* TODO - not escape trailing whitespace in escape - e.g. \_space_ */
+                    bkd_parse_line(&child.data.text, bkd_strtrim_both(trimmed));
                     bkd_sbpush(frame->children, child);
                     sectionCount++;
                     break;

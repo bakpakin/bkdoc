@@ -269,7 +269,8 @@ enum ps {
     PS_CODEBLOCK,
     PS_LISTITEM,
     PS_LIST,
-    PS_BLOCKCOMMENT
+    PS_BLOCKCOMMENT,
+    PS_INLINE_GRID
 };
 
 /* A chunk of parse state that goes onto a stack. This helps
@@ -280,6 +281,7 @@ struct parse_frame {
     struct bkd_node node;
     struct bkd_node * children;
     struct bkd_buffer buffer;
+    struct bkd_string * annotations;
     uint32_t userflags;
     uint32_t useruint;
 };
@@ -361,6 +363,12 @@ static int parse_popstate(struct bkd_parsestate * state) {
         case PS_HEADER:
             bkd_buffree(frame->buffer);
             break;
+        case PS_INLINE_GRID:
+            n.type = BKD_TABLE;
+            n.data.table.itemCount = bkd_sbcount(frame->children);
+            n.data.table.items = bkd_sbflatten(frame->children);
+            bkd_buffree(frame->buffer);
+            break;
     }
     if (bkd_sbcount(state->stack) > 1) {
         struct parse_frame * newtop = bkd_sblastp(state->stack) - 1;
@@ -431,6 +439,8 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
                 parse_pushstate(state, indent, PS_CODEBLOCK);
             } else if (trimmed.length >= 2 && trimmed.data[0] == '>') {
                 parse_pushstate(state, indent, PS_BLOCKCOMMENT);
+            } else if (trimmed.length >= 2 && trimmed.data[0] == '|') {
+                parse_pushstate(state, indent, PS_INLINE_GRID);
             } else {
                 uint32_t listtype = get_list_type(trimmed);
                 if (listtype) {
@@ -535,6 +545,49 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
             frame->userflags |= 1;
             frame->buffer = bkd_bufpush(frame->buffer, trimmed);
             return 1;
+
+        case PS_INLINE_GRID:
+            if (isEmpty || indent < frame->indent) {
+                parse_popstate(state);
+                return isEmpty; /* Consume empty lines but not lines belonging to lower states. */
+            }
+            trimmed = bkd_strtrim_front(line);
+            if (trimmed.data[0] != '|') {
+                parse_popstate(state);
+                return 0;
+            }
+            if (!(frame->userflags & 1)) {
+                frame->userflags |= 1;
+                frame->node.type = BKD_TABLE;
+                frame->node.data.table.cols = 0;
+            }
+            uint32_t nextPipe;
+            trimmed = bkd_strsub(trimmed, 1, -1);
+            uint32_t sectionCount = 0;
+            while (trimmed.length > 0) {
+                const uint32_t pipe = '|';
+                if (find_one(trimmed, &pipe, 1, &nextPipe)) {
+                    struct bkd_string section = bkd_strsub(trimmed, 0, nextPipe - 1);
+                    struct bkd_node child;
+                    child.type = BKD_TEXT;
+                    bkd_parse_line(&child.data.text, section);
+                    bkd_sbpush(frame->children, child);
+                    sectionCount++;
+                } else {
+                    if (bkd_strempty(trimmed)) break;
+                    struct bkd_node child;
+                    child.type = BKD_TEXT;
+                    bkd_parse_line(&child.data.text, trimmed);
+                    bkd_sbpush(frame->children, child);
+                    sectionCount++;
+                    break;
+                }
+                trimmed = bkd_strsub(trimmed, nextPipe + 1, -1);
+            }
+            if (sectionCount >frame->node.data.table.cols)
+                frame->node.data.table.cols = sectionCount;
+            return 1;
+
     }
     return 1;
 }
@@ -599,7 +652,7 @@ static void cleanup_node(struct bkd_node * node) {
             BKD_FREE(node->data.list.items);
             break;
         case BKD_TABLE:
-            max = node->data.table.cols * node->data.table.rows;
+            max = node->data.table.itemCount;
             for (i = 0; i < max; i++) {
                 cleanup_node(node->data.table.items + i);
             }

@@ -45,7 +45,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <stdint.h>
 #include <stddef.h>
 
-#define TRC() printf("TRACE: line %d in %s\n", __LINE__, __FILE__)
+/* #define TRC() printf("TRACE: line %d in %s\n", __LINE__, __FILE__) */
 
 /*
  * Denotes the type of a block level element.
@@ -83,7 +83,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define BKD_ANCHOR 2048
 #define BKD_INTERNALLINK 4096
 
-/* Different styles for sub documents, or lists. */
+/*
+ * Different styles for sub documents, or lists.
+ */
 #define BKD_LISTSTYLE_NONE 0
 #define BKD_LISTSTYLE_NUMBERED 1
 #define BKD_LISTSTYLE_BULLETS 2
@@ -126,8 +128,8 @@ struct bkd_paragraph {
 };
 
 struct bkd_table {
-    uint32_t rows;
     uint32_t cols;
+    uint32_t itemCount;
     struct bkd_node * items;
 };
 

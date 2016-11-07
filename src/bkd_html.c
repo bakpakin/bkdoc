@@ -236,7 +236,20 @@ static int32_t print_node(struct bkd_ostream * out, struct bkd_node * node) {
             }
             break;
         case BKD_TABLE:
-            /* TODO */
+            bkd_puts(out, "<table>");
+            uint32_t cols = node->data.table.cols;
+            uint32_t count = node->data.table.itemCount;
+            uint32_t cellIndex = 0;
+            while (cellIndex < count) {
+                bkd_puts(out, "<tr>");
+                for (uint32_t i = 0; cellIndex < count && i < cols; i++, cellIndex++) {
+                    bkd_puts(out, "<td>");
+                    print_node(out, node->data.table.items + cellIndex);
+                    bkd_puts(out, "</td>");
+                }
+                bkd_puts(out, "</tr>");
+            }
+            bkd_puts(out, "</table>");
             break;
         case BKD_HEADER:
             headerSize = node->data.header.size;

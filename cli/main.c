@@ -40,11 +40,13 @@ void handler(int sig) {
 
 #define OPT_HELP 1
 #define OPT_VERSION 2
+#define OPT_STANDALONE 4
 
 int get_option(char o) {
     switch (o) {
         case 'h': return OPT_HELP;
         case 'v': return OPT_VERSION;
+        case 's': return OPT_STANDALONE;
         default: return 0;
     }
 }
@@ -52,6 +54,7 @@ int get_option(char o) {
 int main(int argc, char *argv[]) {
     int64_t currentArg = 1;
     uint64_t options = 0;
+    uint32_t print_options = 0;
     signal(SIGSEGV, handler);
 
     /* Get options */
@@ -82,8 +85,12 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
+    if (options & OPT_STANDALONE) {
+        print_options |= BKD_OPTION_STANDALONE;
+    }
+
     struct bkd_list * doc = bkd_parse(BKD_STDIN);
-    bkd_html(BKD_STDOUT, doc);
+    bkd_html(BKD_STDOUT, doc, print_options);
     bkd_docfree(doc);
 
     bkd_istream_freebuf(BKD_STDIN);

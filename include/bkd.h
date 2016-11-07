@@ -103,6 +103,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define BKD_PAGEBREAK 3
 #define BKD_COUNT_STYLE 4
 
+/* Document printing options */
+#define BKD_OPTION_STANDALONE 1
+
 /* Strings */
 struct bkd_string {
     uint32_t length;

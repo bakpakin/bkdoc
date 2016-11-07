@@ -24,7 +24,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "bkd.h"
 
-int bkd_html(struct bkd_ostream * out, struct bkd_list * document);
+int bkd_html(struct bkd_ostream * out, struct bkd_list * document, uint32_t options);
 
 int bkd_html_fragment(struct bkd_ostream * out, struct bkd_node * node);
 

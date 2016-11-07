@@ -210,7 +210,7 @@ struct bkd_string bkd_strtrim(struct bkd_string string, int front, int back) {
             charsize = bkd_utf8_readlenback(tail, &codepoint, tail - head);
             if (!bkd_utf8_whitespace(codepoint))
                 break;
-            tail += charsize;
+            tail -= charsize;
         }
     }
     string.data = head;
@@ -236,7 +236,7 @@ struct bkd_string bkd_strtrimc(struct bkd_string string, uint32_t codepoint, int
             charsize = bkd_utf8_readlenback(tail, &testpoint, tail - head);
             if (testpoint != codepoint)
                 break;
-            tail += charsize;
+            tail -= charsize;
         }
     }
     string.data = head;

@@ -312,15 +312,17 @@ int32_t bkd_html_fragment(struct bkd_ostream * out, struct bkd_node * node) {
     return print_node(out, node);
 }
 
-int32_t bkd_html(struct bkd_ostream * out, struct bkd_list * document) {
+int32_t bkd_html(struct bkd_ostream * out, struct bkd_list * document, uint32_t options) {
     int32_t error;
-    bkd_puts(out, "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head><body>");
+    if (options & BKD_OPTION_STANDALONE)
+        bkd_puts(out, "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head><body>");
     for (uint32_t i = 0; i < document->itemCount; i++) {
         if ((error = print_node(out, document->items + i))) {
             BKD_ERROR(error);
             return error;
         }
     }
-    bkd_puts(out, "</body></html>\n");
+    if (options & BKD_OPTION_STANDALONE)
+        bkd_puts(out, "</body></html>\n");
     return 0;
 }

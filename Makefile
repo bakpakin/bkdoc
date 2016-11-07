@@ -32,11 +32,11 @@ clean:
 	rm $(FIXTURES_TEMP) || true
 
 %.html : %.bkd $(TARGET)
-	./$(TARGET) < $< > $@
+	./$(TARGET) -s < $< > $@
 
 # Generate things to test
 %.html.tmp : %.bkd $(TARGET)
-	@./$(TARGET) < $< > $@
+	@./$(TARGET) -s < $< > $@
 
 # Run test on fixture
 %.target : %.html.tmp

@@ -153,11 +153,11 @@ int bkd_strempty(struct bkd_string string) {
 }
 
 uint32_t bkd_strhash(struct bkd_string string) {
-    uint8_t * data = string.data;
+    uint8_t * dataEnd = string.data + string.length;
+    uint8_t * data;
     uint32_t hash = 5381;
-    uint32_t c;
-    while ((c = *data++))
-        hash = 33 * hash + c;
+    for (data = string.data; data < dataEnd; ++data)
+        hash = 33 * hash + *data;
     return hash;
 }
 

@@ -27,16 +27,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "bkd_html.h"
 #include "bkd_string.h"
 #include "bkd_utf8.h"
+#include "bkd_stretchy.h"
 
 #include <stdio.h>
-#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
-
-void handler(int sig) {
-    fprintf(stderr, "Signal Error: %d\n", sig);
-    exit(sig);
-}
 
 #define OPT_HELP 1
 #define OPT_VERSION 2
@@ -51,11 +46,16 @@ int get_option(char o) {
     }
 }
 
+struct bkd_istream loadfile(const char * name) {
+    FILE *f = fopen(name, "r");
+    return bkd_file_istream(f);
+}
+
 int main(int argc, char *argv[]) {
     int64_t currentArg = 1;
     uint64_t options = 0;
     uint32_t print_options = 0;
-    signal(SIGSEGV, handler);
+    struct bkd_htmlinsert *inserts = NULL;
 
     /* Get options */
     for (currentArg = 1; currentArg < argc; currentArg++) {
@@ -63,8 +63,38 @@ int main(int argc, char *argv[]) {
         size_t len = strlen(arg);
         /* text option */
         if (arg[0] == '-') {
-            for (size_t i = 1; i < len; i++)
-                options |= get_option(arg[i]);
+            if (arg[1] == '-') {
+                struct bkd_htmlinsert insert;
+                if (strncmp(arg + 2, "style-inline=", 13) == 0) {
+                    insert.type = BKD_HTML_INSERTSTYLE;
+                    insert.data.string.data = (uint8_t *) arg + 2 + 13;
+                    insert.data.string.length = strlen((char *) insert.data.string.data);
+                } else if (strncmp(arg + 2, "script-inline=", 14) == 0) {
+                    insert.type = BKD_HTML_INSERTSCRIPT;
+                    insert.data.string.data = (uint8_t *) arg + 2 + 14;
+                    insert.data.string.length = strlen((char *) insert.data.string.data);
+                } else if (strncmp(arg + 2, "style-file=", 11) == 0) {
+                    insert.type = BKD_HTML_INSERTSTYLE | BKD_HTML_INSERT_ISSTREAM;
+                    insert.data.stream = BKD_MALLOC(sizeof(struct bkd_istream));
+                    *insert.data.stream = loadfile(arg + 2 + 11);
+                } else if (strncmp(arg + 2, "script-file=", 12) == 0) {
+                    insert.type = BKD_HTML_INSERTSCRIPT | BKD_HTML_INSERT_ISSTREAM;
+                    insert.data.stream = BKD_MALLOC(sizeof(struct bkd_istream));
+                    *insert.data.stream = loadfile(arg + 2 + 12);
+                } else if (strncmp(arg + 2, "style=", 6) == 0) {
+                    insert.type = BKD_HTML_INSERTSTYLE | BKD_HTML_INSERT_ISLINK;
+                    insert.data.string.data = (uint8_t *) arg + 2 + 6;
+                    insert.data.string.length = strlen((char *) insert.data.string.data);
+                } else if (strncmp(arg + 2, "script=", 7) == 0) {
+                    insert.type = BKD_HTML_INSERTSCRIPT | BKD_HTML_INSERT_ISLINK;
+                    insert.data.string.data = (uint8_t *) arg + 2 + 7;
+                    insert.data.string.length = strlen((char *) insert.data.string.data);
+                }
+                bkd_sbpush(inserts, insert);
+            } else {
+                for (size_t i = 1; i < len; i++)
+                    options |= get_option(arg[i]);
+            }
         } else {
 
         }
@@ -90,8 +120,19 @@ int main(int argc, char *argv[]) {
     }
 
     struct bkd_list * doc = bkd_parse(BKD_STDIN);
-    bkd_html(BKD_STDOUT, doc, print_options);
+    bkd_html(BKD_STDOUT, doc, print_options, bkd_sbcount(inserts), inserts);
     bkd_docfree(doc);
+
+    /* Close ingoing files */
+    for (int32_t i = 0; i < bkd_sbcount(inserts); ++i) {
+        if (inserts[i].type & BKD_HTML_INSERT_ISSTREAM) {
+            bkd_istream_freebuf(inserts[i].data.stream);
+            fclose((FILE *) inserts[i].data.stream->user);
+            BKD_FREE(inserts[i].data.stream);
+        }
+    }
+
+    bkd_sbfree(inserts);
 
     bkd_istream_freebuf(BKD_STDIN);
     return 0;

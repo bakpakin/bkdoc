@@ -45,8 +45,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <stdint.h>
 #include <stddef.h>
 
-/* #define TRC() printf("TRACE: line %d in %s\n", __LINE__, __FILE__) */
-
 /*
  * Denotes the type of a block level element.
  */

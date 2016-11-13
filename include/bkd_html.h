@@ -24,8 +24,28 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "bkd.h"
 
-int bkd_html(struct bkd_ostream * out, struct bkd_list * document, uint32_t options);
+#define BKD_HTML_INSERTSTYLE 1
+#define BKD_HTML_INSERTSCRIPT 2
+#define BKD_HTML_INSERT_ISLINK 4
+#define BKD_HTML_INSERT_ISSTREAM 8
 
-int bkd_html_fragment(struct bkd_ostream * out, struct bkd_node * node);
+struct bkd_htmlinsert {
+    uint32_t type;
+    union {
+        struct bkd_string string;
+        struct bkd_istream * stream;
+    } data;
+};
+
+int bkd_html(
+        struct bkd_ostream * out,
+        struct bkd_list * document,
+        uint32_t options,
+        uint32_t insertCount,
+        struct bkd_htmlinsert * inserts);
+
+int bkd_html_fragment(
+        struct bkd_ostream * out,
+        struct bkd_node * node);
 
 #endif /* end of include guard: BKD_HTML_ */

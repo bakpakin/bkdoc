@@ -82,6 +82,54 @@ static void print_html_utf8(struct bkd_ostream * out, struct bkd_string string, 
 
 #undef CASE
 
+/* Allows escaping of elements like </script> and </style>, which
+ * are potential points for cross site scripting attacks.
+ * TODO: Possibly replace with KNP algorithm although since </script>
+ * and </style> have no repeat characters it is not much needed (yet).
+ */
+static void print_escape_sequence_no_repeat(
+        struct bkd_ostream * out,
+        struct bkd_string string,
+        struct bkd_string avoid,
+        struct bkd_string replace) {
+    /* Avoid MUST be less than 12 characters AND have no repeating characters. */
+    uint8_t bufferData[12];
+    struct bkd_string buffer;
+    buffer.data = bufferData;
+    buffer.length = 0;
+    const uint8_t *stringEnd = string.data + string.length;
+    for (uint8_t * c = string.data; c < stringEnd; ++c) {
+        if (*c == avoid.data[buffer.length]) {
+            buffer.data[buffer.length++] = *c;
+            if (buffer.length == avoid.length) {
+                bkd_putn(out, replace);
+                buffer.length = 0;
+            }
+        } else {
+            bkd_putn(out, buffer);
+            buffer.length = 0;
+            bkd_putc(out, *c);
+        }
+    }
+    /* Print remaining characters */
+    bkd_putn(out, buffer);
+}
+
+/* Similar to print_escape_sequence_no_repeate, but takes stream instead
+ * of string. The avoid string also can't contain newlines. */
+static void print_escape_stream(
+        struct bkd_ostream * out,
+        struct bkd_istream * in,
+        struct bkd_string avoid,
+        struct bkd_string replace) {
+    while (!in->done) {
+        struct bkd_string line = bkd_getl(in);
+        print_escape_sequence_no_repeat(out, line, avoid, replace);
+        bkd_putc(out, '\n');
+        bkd_putc(out, '\r');
+    }
+}
+
 static void print_line(struct bkd_ostream * out, struct bkd_linenode * t);
 
 static void print_codeinline(struct bkd_ostream * out, struct bkd_linenode * t) {
@@ -312,10 +360,63 @@ int32_t bkd_html_fragment(struct bkd_ostream * out, struct bkd_node * node) {
     return print_node(out, node);
 }
 
-int32_t bkd_html(struct bkd_ostream * out, struct bkd_list * document, uint32_t options) {
+static uint8_t styleStringData[] = "</style>";
+static struct bkd_string styleString = {8, styleStringData};
+
+static uint8_t styleStringReplaceData[] = "<\\/style>";
+static struct bkd_string styleStringReplace = {9, styleStringReplaceData};
+
+static uint8_t scriptStringData[] = "</script>";
+static struct bkd_string scriptString = {9, scriptStringData};
+
+static uint8_t scriptStringReplaceData[] = "<\\/script>";
+static struct bkd_string scriptStringReplace = {10, scriptStringReplaceData};
+
+int32_t bkd_html(
+        struct bkd_ostream * out,
+        struct bkd_list * document,
+        uint32_t options,
+        uint32_t insertCount,
+        struct bkd_htmlinsert * inserts) {
     int32_t error;
+    struct bkd_htmlinsert *insert;
     if (options & BKD_OPTION_STANDALONE)
-        bkd_puts(out, "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head><body>");
+        bkd_puts(out, "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">");
+    for (uint32_t i = 0; i < insertCount; i++) {
+        insert = inserts + i;
+        if (insert->type & BKD_HTML_INSERTSTYLE) {
+            if (insert->type & BKD_HTML_INSERT_ISLINK) {
+                bkd_puts(out, "<link rel=\"stylesheet\" type=\"text/css\" href=\"");
+                print_html_utf8(out, insert->data.string, 0);
+                bkd_puts(out, "\">");
+            } else {
+                bkd_puts(out, "<style>");
+                if (insert->type & BKD_HTML_INSERT_ISSTREAM) {
+                    printf("Hi\n");
+                    print_escape_stream(out, insert->data.stream, styleString, styleStringReplace);
+                } else {
+                    print_escape_sequence_no_repeat(out, insert->data.string, styleString, styleStringReplace);
+                }
+                bkd_puts(out, "</style>");
+            }
+        } else if (insert->type & BKD_HTML_INSERTSCRIPT) {
+            if (insert->type & BKD_HTML_INSERT_ISLINK) {
+                bkd_puts(out, "<script type=\"text/javascript\" src=\"");
+                print_html_utf8(out, insert->data.string, 0);
+                bkd_puts(out, "\"></script>");
+            } else {
+                bkd_puts(out, "<script type=\"text/javascript\">");
+                if (insert->type & BKD_HTML_INSERT_ISSTREAM) {
+                    print_escape_stream(out, insert->data.stream, scriptString, scriptStringReplace);
+                } else {
+                    print_escape_sequence_no_repeat(out, insert->data.string, scriptString, scriptStringReplace);
+                }
+                bkd_puts(out, "</script>");
+            }
+        }
+    }
+    if (options & BKD_OPTION_STANDALONE)
+        bkd_puts(out, "</head><body>");
     for (uint32_t i = 0; i < document->itemCount; i++) {
         if ((error = print_node(out, document->items + i))) {
             BKD_ERROR(error);

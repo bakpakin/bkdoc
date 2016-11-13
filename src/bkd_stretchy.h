@@ -33,7 +33,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define bkd_sblast(a)         ((a)[bkd__sbn(a)-1])
 #define bkd_sblastp(a)         ((a) + bkd__sbn(a)-1)
 #define bkd_sbpop(a)          (--bkd__sbn(a))
-#define bkd_sbflatten(a)      (bkd__sbflatten_impl((a),sizeof(*(a))))
 
 #define bkd__sbraw(a) ((int *) (a) - 2)
 #define bkd__sbm(a)   bkd__sbraw(a)[0]
@@ -59,13 +58,6 @@ static void * bkd__sbgrowf(void *arr, int increment, int itemsize) {
       #endif
       return (void *) (2*sizeof(int)); // try to force a NULL pointer exception later
    }
-}
-
-static void * bkd__sbflatten_impl(void * arr, int itemsize) {
-    int count = bkd_sbcount(arr);
-    void * ret = bkd__sbraw(arr);
-    memmove(ret, arr, itemsize * count);
-    return BKD_REALLOC(ret, itemsize * count);
 }
 
 #endif /* end of include guard: BKD_STRETCHY_H_W39GUEUP */

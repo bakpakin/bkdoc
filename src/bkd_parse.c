@@ -308,6 +308,13 @@ static void parse_pushstate(struct bkd_parsestate * state, uint32_t indent, enum
     bkd_sbpush(state->stack, top);
 }
 
+static struct bkd_node * flatten_children(struct bkd_node * stretchyBuffer) {
+    int * raw = bkd__sbraw(stretchyBuffer);
+    int count = bkd_sbcount(stretchyBuffer);
+    memmove(raw, stretchyBuffer, sizeof(struct bkd_node) * count);
+    return BKD_REALLOC(raw, count * sizeof(struct bkd_node));
+}
+
 /* Pops the topmost parse frame off of the stack, and finalizes any data associated
  * with the frame, such as setting up children and freeing buffers. This should handle
  * all different types of node that can be in the parse frame. */
@@ -339,7 +346,7 @@ static int parse_popstate(struct bkd_parsestate * state) {
         case PS_SUBDOC:
             n.type = BKD_LIST;
             n.data.list.itemCount = bkd_sbcount(frame->children);
-            n.data.list.items = bkd_sbflatten(frame->children);
+            n.data.list.items = flatten_children(frame->children);
             bkd_buffree(frame->buffer);
             break;
         case PS_COLLAPSIBLE_SUBDOC:
@@ -351,7 +358,7 @@ static int parse_popstate(struct bkd_parsestate * state) {
             } else {
                 n.type = BKD_LIST;
                 n.data.list.itemCount = bkd_sbcount(frame->children);
-                n.data.list.items = bkd_sbflatten(frame->children);
+                n.data.list.items = flatten_children(frame->children);
             }
             bkd_buffree(frame->buffer);
             break;
@@ -366,7 +373,7 @@ static int parse_popstate(struct bkd_parsestate * state) {
         case PS_INLINE_GRID:
             n.type = BKD_TABLE;
             n.data.table.itemCount = bkd_sbcount(frame->children);
-            n.data.table.items = bkd_sbflatten(frame->children);
+            n.data.table.items = flatten_children(frame->children);
             bkd_buffree(frame->buffer);
             break;
     }

@@ -33,89 +33,153 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <stdlib.h>
 #include <string.h>
 
-#define OPT_HELP 1
-#define OPT_VERSION 2
-#define OPT_STANDALONE 4
+#define CLI_FLAG_TAKESARGS 1
+#define CLI_FLAG_BIT 2
 
-int get_option(char o) {
-    switch (o) {
-        case 'h': return OPT_HELP;
-        case 'v': return OPT_VERSION;
-        case 's': return OPT_STANDALONE;
-        default: return 0;
+static const char cli_title[] = "BKDoc v0.0 Copyright 2016 Calvin Rose.\n";
+
+struct cli_option {
+    const char * name;
+    unsigned char shortName;
+    int flags;
+    const char * description;
+};
+
+struct cli_optionparam {
+    struct bkd_string data;
+    int valid: 1;
+};
+
+static struct cli_option options[] = {
+    {"standalone", 's', 2, "Generates an HTML document that is standalone, rather than a fragment of HTML"},
+    {"script-inline", 'I', 1, "Inserts a script literal inline into the output HTML"},
+    {"style-inline", 'i', 1, "Inserts CSS literal inline into the output HTML"},
+    {"script-file", 'F', 1, "Inserts a script inline from a file into the output HTML"},
+    {"style-file", 'f', 1, "Inserts a CSS style inline into the output HTML"},
+    {"script", 'T', 1, "Inserts a script via href into the output HTML"},
+    {"style", 't', 1, "Inserts a css stylesheet via href into the output HTML"},
+    {"version", 'v', 2, "Prints the version"},
+    {"help", 'h', 2, "Prints the help description"}
+};
+
+static struct cli_optionparam opts[128];
+
+static int getopt(const char * arg) {
+    if (arg[0] != '-') return -1;
+    int size = sizeof(options) / sizeof(options[0]);
+    if (arg[1] == '-') {
+        for (int i = 0; i < size; ++i) {
+            const char * name = options[i].name;
+            if (options[i].flags & CLI_FLAG_TAKESARGS) {
+                size_t namelen = strlen(options[i].name);
+                if (strncmp(arg + 2, name, namelen) == 0 && arg[namelen + 2] == '=') {
+                    const char * data = arg + namelen + 3;
+                    struct bkd_string param;
+                    param.data = (uint8_t *) data;
+                    param.length = strlen(data);
+                    opts[options[i].shortName].valid = 1;
+                    opts[options[i].shortName].data = param;
+                    return options[i].shortName;
+                }
+            } else if (strcmp(arg + 2, name) == 0) {
+                opts[options[i].shortName].valid = 1;
+                opts[options[i].shortName].data = BKD_NULLSTR;
+                return options[i].shortName;
+            }
+        }
+    } else {
+        for (const char *d = arg + 1; *d != '\0'; ++d) {
+            int found = 0;
+            for (int i = 0; i < size; ++i) {
+                if (!(options[i].flags & CLI_FLAG_TAKESARGS) && options[i].shortName == *d) {
+                    found = 1;
+                    opts[options[i].shortName].valid = 1;
+                    opts[options[i].shortName].data = BKD_NULLSTR;
+                    break;
+                }
+            }
+            if (!found) return -1;
+        }
     }
+    return 0;
 }
 
-struct bkd_istream loadfile(const char * name) {
-    FILE *f = fopen(name, "r");
+struct bkd_istream loadfile(struct bkd_string filename) {
+    FILE *f = fopen((char *)filename.data, "r");
     return bkd_file_istream(f);
 }
 
 int main(int argc, char *argv[]) {
     int64_t currentArg = 1;
-    uint64_t options = 0;
     uint32_t print_options = 0;
     struct bkd_htmlinsert *inserts = NULL;
+
+    /* Clear opts */
+    memset(opts, 0, sizeof(opts));
 
     /* Get options */
     for (currentArg = 1; currentArg < argc; currentArg++) {
         char * arg = argv[currentArg];
-        size_t len = strlen(arg);
         /* text option */
-        if (arg[0] == '-') {
-            if (arg[1] == '-') {
-                struct bkd_htmlinsert insert;
-                if (strncmp(arg + 2, "style-inline=", 13) == 0) {
-                    insert.type = BKD_HTML_INSERTSTYLE;
-                    insert.data.string.data = (uint8_t *) arg + 2 + 13;
-                    insert.data.string.length = strlen((char *) insert.data.string.data);
-                } else if (strncmp(arg + 2, "script-inline=", 14) == 0) {
-                    insert.type = BKD_HTML_INSERTSCRIPT;
-                    insert.data.string.data = (uint8_t *) arg + 2 + 14;
-                    insert.data.string.length = strlen((char *) insert.data.string.data);
-                } else if (strncmp(arg + 2, "style-file=", 11) == 0) {
-                    insert.type = BKD_HTML_INSERTSTYLE | BKD_HTML_INSERT_ISSTREAM;
-                    insert.data.stream = BKD_MALLOC(sizeof(struct bkd_istream));
-                    *insert.data.stream = loadfile(arg + 2 + 11);
-                } else if (strncmp(arg + 2, "script-file=", 12) == 0) {
-                    insert.type = BKD_HTML_INSERTSCRIPT | BKD_HTML_INSERT_ISSTREAM;
-                    insert.data.stream = BKD_MALLOC(sizeof(struct bkd_istream));
-                    *insert.data.stream = loadfile(arg + 2 + 12);
-                } else if (strncmp(arg + 2, "style=", 6) == 0) {
-                    insert.type = BKD_HTML_INSERTSTYLE | BKD_HTML_INSERT_ISLINK;
-                    insert.data.string.data = (uint8_t *) arg + 2 + 6;
-                    insert.data.string.length = strlen((char *) insert.data.string.data);
-                } else if (strncmp(arg + 2, "script=", 7) == 0) {
-                    insert.type = BKD_HTML_INSERTSCRIPT | BKD_HTML_INSERT_ISLINK;
-                    insert.data.string.data = (uint8_t *) arg + 2 + 7;
-                    insert.data.string.length = strlen((char *) insert.data.string.data);
-                }
-                bkd_sbpush(inserts, insert);
-            } else {
-                for (size_t i = 1; i < len; i++)
-                    options |= get_option(arg[i]);
-            }
-        } else {
-
+        struct bkd_htmlinsert insert;
+        int option = getopt(arg);
+        switch(option) {
+            case -1: return 1;
+            case 'I': /* script inline */
+                     insert.type = BKD_HTML_INSERTSCRIPT;
+                     insert.data.string = opts['I'].data;
+            case 'i': /* style inline */
+                     insert.type = BKD_HTML_INSERTSTYLE;
+                     insert.data.string = opts['i'].data;
+            case 'F': /* script file */
+                     insert.type = BKD_HTML_INSERTSCRIPT | BKD_HTML_INSERT_ISSTREAM;
+                     insert.data.stream = BKD_MALLOC(sizeof(struct bkd_istream));
+                     *insert.data.stream = loadfile(opts['F'].data);
+            case 'f': /* style file */
+                     insert.type = BKD_HTML_INSERTSTYLE | BKD_HTML_INSERT_ISSTREAM;
+                     insert.data.stream = BKD_MALLOC(sizeof(struct bkd_istream));
+                     *insert.data.stream = loadfile(opts['f'].data);
+            case 'T': /* script link */
+                     insert.type = BKD_HTML_INSERTSCRIPT | BKD_HTML_INSERT_ISLINK;
+                     insert.data.string = opts['T'].data;
+            case 't': /* style link*/
+                     insert.type = BKD_HTML_INSERTSTYLE | BKD_HTML_INSERT_ISLINK;
+                     insert.data.string = opts['t'].data;
+            default: break;
+        }
+        if (option != 0) {
+            bkd_sbpush(inserts, insert);
         }
     }
 
     /* Show version and exit */
-    if (options & OPT_VERSION) {
-        printf("BKDoc v0.0 Copyright 2016 Calvin Rose.\n");
+    if (opts['v'].valid) {
+        printf(cli_title);
         return 0;
     }
 
     /* Show help text and exit */
-    if (options & OPT_HELP) {
-        printf("BKDoc v0.0 Copyright 2016 Calvin Rose.\n");
-        printf("%s [options] < filein.bkd > fileout.bkd\n", argv[0]);
-        printf("\t-h : Shows this help text.\n");
-        printf("\t-v : Shows the version and copyright information.\n");
+    if (opts['h'].valid) {
+        printf(cli_title);
+        printf("\n%s [options] < filein.bkd > fileout.bkd\n\n", argv[0]);
+        int size = sizeof(options) / sizeof(options[0]);
+        for (int i = 0; i < size; ++i) {
+            struct cli_option o = options[i];
+            const char spaces[] = "                          ";
+            printf("    --%s", o.name);
+            if (o.flags & CLI_FLAG_TAKESARGS) {
+                int nums = 22 - strlen(o.name);
+                printf("=...%.*s%s\n", nums, spaces, o.description);
+            } else {
+                int nums = 18 - strlen(o.name);
+                printf("%.*s  (-%c)  %s\n", nums, spaces, o.shortName, o.description);
+            }
+        }
+        printf("\n");
         return 0;
     }
 
-    if (options & OPT_STANDALONE) {
+    if (opts['s'].valid) {
         print_options |= BKD_OPTION_STANDALONE;
     }
 

@@ -392,7 +392,6 @@ int32_t bkd_html(
             } else {
                 bkd_puts(out, "<style>");
                 if (insert->type & BKD_HTML_INSERT_ISSTREAM) {
-                    printf("Hi\n");
                     print_escape_stream(out, insert->data.stream, styleString, styleStringReplace);
                 } else {
                     print_escape_sequence_no_repeat(out, insert->data.string, styleString, styleStringReplace);

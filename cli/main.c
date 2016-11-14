@@ -184,7 +184,15 @@ int main(int argc, char *argv[]) {
     }
 
     struct bkd_list * doc = bkd_parse(BKD_STDIN);
+
+    /* Add some buffering to stdout for more speed */
+    do {
+        char buffer[8192];
+        setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
+    } while (0);
     bkd_html(BKD_STDOUT, doc, print_options, bkd_sbcount(inserts), inserts);
+    fflush(stdout);
+
     bkd_docfree(doc);
 
     /* Close ingoing files */

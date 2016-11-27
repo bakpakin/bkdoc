@@ -138,7 +138,7 @@ struct bkd_ostream * BKD_STDOUT = &_bkd_stdout;
 static int file_getl(struct bkd_istream * in) {
     FILE * file = (FILE *) in->user;
     int c;
-    in->buffer.string.length = 0; /* Clear th buffer */
+    in->buffer.string.length = 0; /* Clear the buffer */
     for(;;) {
         c = fgetc(file);
         if(c == EOF) {

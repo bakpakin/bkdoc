@@ -151,9 +151,9 @@ size_t bkd_utf8_readback(uint8_t * s, uint32_t * ret) {
 
 uint8_t * bkd_utf8_findhead(uint8_t * s, uint8_t * start) {
     while ((*s & 0xC0) == 0x80) {
-        if (s <= start)
+        if (s < start)
             return NULL;
-        s--;
+        --s;
     }
     return s;
 }

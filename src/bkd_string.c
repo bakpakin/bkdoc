@@ -29,8 +29,12 @@ static inline uint32_t getSubIndex(int32_t i, uint32_t len) {
     if (i < 0) {
         return len + i > 0 ? len + i : 0;
     } else {
-        return ((uint32_t) i) > len ? len : (uint32_t) i;
+        return i;
     }
+}
+
+static inline int indexValid(int32_t i, uint32_t len) {
+    return i >= 0 && ((uint32_t) i) < len;
 }
 
 /**
@@ -40,11 +44,14 @@ struct bkd_string bkd_strsub(struct bkd_string string, int32_t index1, int32_t i
     uint32_t realIndex1 = getSubIndex(index1, string.length);
     uint32_t realIndex2 = getSubIndex(index2, string.length);
     struct bkd_string ret;
-    if (realIndex2 >= realIndex1) {
+    if (realIndex2 < realIndex1 ||
+            string.length < 1 ||
+            !indexValid(realIndex1, string.length) ||
+            !indexValid(realIndex2, string.length)) {
+        ret = BKD_NULLSTR;
+    } else {
         ret.length = realIndex2 - realIndex1 + 1;
         ret.data = string.data + realIndex1;
-    } else {
-        ret = BKD_NULLSTR;
     }
     return ret;
 }
@@ -215,6 +222,7 @@ struct bkd_string bkd_strtrim(struct bkd_string string, int front, int back) {
     }
     string.data = head;
     string.length = tail - head;
+    if (string.length == 0) return BKD_NULLSTR;
     return string;
 }
 
@@ -241,6 +249,7 @@ struct bkd_string bkd_strtrimc(struct bkd_string string, uint32_t codepoint, int
     }
     string.data = head;
     string.length = tail - head;
+    if (string.length == 0) return BKD_NULLSTR;
     return string;
 }
 

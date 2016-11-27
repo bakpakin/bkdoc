@@ -23,7 +23,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "bkd_utf8.h"
 #include "bkd_string.h"
 #include "bkd_stretchy.h"
-#include "bkd_hash.h"
 
 #include <string.h>
 
@@ -113,7 +112,8 @@ static uint32_t find_one(struct bkd_string string, const uint32_t * codepoints, 
         charsize = bkd_utf8_readlen(string.data + pos, &testpoint, string.length - pos);
         if (testpoint == '\\') {
             pos += charsize;
-            read_escape(bkd_strsub(string, pos, -1), &charsize);
+            if (pos < string.length)
+                read_escape(bkd_strsub(string, pos, -1), &charsize);
         } else {
             for (i = 0; i < count; i++) {
                 if (testpoint == codepoints[i]) {
@@ -151,11 +151,10 @@ static inline struct bkd_linenode * add_node(struct bkd_linenode ** nodes, uint3
 }
 
 static struct bkd_string parse_flags(struct bkd_string string, uint32_t * flags) {
-    uint32_t index = 0;
-    int done = 0;
-    while (!done) {
-        uint32_t codepoint = 0;
-        uint32_t csize = bkd_utf8_readlen(string.data + index, &codepoint, string.length - index);
+    uint32_t index = 0, codepoint, csize;
+    for (;;) {
+        codepoint = 0;
+        csize = bkd_utf8_readlen(string.data + index, &codepoint, string.length - index);
         switch (codepoint) {
             case 'A': *flags |= BKD_ANCHOR; break;
             case 'B': *flags |= BKD_BOLD; break;
@@ -172,15 +171,12 @@ static struct bkd_string parse_flags(struct bkd_string string, uint32_t * flags)
             case '#': *flags |= BKD_INTERNALLINK; break;
             case ':':
                 if (*flags == 0) *flags |= BKD_CUSTOM;
-                string = bkd_strsub(string, index + 1, -1);
-                done = 1; break;
+                return bkd_strsub(string, index + 1, -1);
             default:
-                string = bkd_strsub(string, index, -1);
-                done = 1; break;
+                return bkd_strsub(string, index, -1);
         }
         index += csize;
     }
-    return string;
 }
 
 /* Puts a string of utf8 text into a linenode struct. */
@@ -295,7 +291,7 @@ struct bkd_parsestate {
 /* Add a new parse frame to the parsing stack. Sets the frame to sensible defaults. */
 static void parse_pushstate(struct bkd_parsestate * state, uint32_t indent, enum ps ps) {
     struct parse_frame top;
-    top.buffer = bkd_bufnew(80);
+    top.buffer = bkd_bufnew(180);
     top.children = NULL;
     top.indent = indent;
     top.ps = ps;
@@ -308,9 +304,11 @@ static void parse_pushstate(struct bkd_parsestate * state, uint32_t indent, enum
     bkd_sbpush(state->stack, top);
 }
 
+/* Convert a stretchy buffer into a nomrally allocated chunk of memory. */
 static struct bkd_node * flatten_children(struct bkd_node * stretchyBuffer) {
     int * raw = bkd__sbraw(stretchyBuffer);
     int count = bkd_sbcount(stretchyBuffer);
+    if (count == 0) return NULL;
     memmove(raw, stretchyBuffer, sizeof(struct bkd_node) * count);
     return BKD_REALLOC(raw, count * sizeof(struct bkd_node));
 }
@@ -413,7 +411,7 @@ static inline uint32_t get_list_type(struct bkd_string trimmed) {
 }
 
 /* Dispatch a single line to the parser. Returns if the line was consumed. If so,
- * the dispatch will be next with the next line. If not, the dispath will be called
+ * the dispatch will be next with the next line. If not, the dispatch will be called
  * again with the same line (but hopefully different state) */
 static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line) {
     uint32_t indent = bkd_strindent(line);
@@ -473,7 +471,6 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
                 parse_pushstate(state, indent, PS_LISTITEM);
                 frame = bkd_sblastp(state->stack);
                 frame->buffer = bkd_bufpush(frame->buffer, bkd_strsub(bkd_strtrim_front(line), 2, -1));
-                frame->userflags |= 1;
                 return 1;
             } else {
                 parse_popstate(state);
@@ -481,7 +478,15 @@ static int parse_dispatch(struct bkd_parsestate * state, struct bkd_string line)
             }
 
         case PS_CODEBLOCK:
-            stripped = bkd_strstripn_new(line, indent < frame->indent ? indent : frame->indent);
+            if (!isEmpty && indent < frame->indent) {
+                parse_popstate(state);
+                return 0;
+            }
+            if (isEmpty) {
+                stripped = BKD_NULLSTR;
+            } else {
+                stripped = bkd_strstripn_new(line, frame->indent);
+            }
             if (frame->useruint == 0) { /* First line */
                 trimmed = bkd_strtrimc_front(stripped, '`');
                 frame->useruint = stripped.length - trimmed.length;
